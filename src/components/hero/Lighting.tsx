@@ -2,68 +2,53 @@
 
 import type { RefObject } from "react";
 import * as THREE from "three";
-import { RectAreaLightUniformsLib } from "three/examples/jsm/lights/RectAreaLightUniformsLib.js";
+import type { Tier } from "@/lib/perfTier";
 import { FORD_COLORS } from "@/lib/theme";
 
-// RectAreaLight needs its LTC lookup textures registered before first use.
-// Safe to call more than once (HMR) -- it just re-registers the same data.
-RectAreaLightUniformsLib.init();
+// Ford Grabber (#1700F4) now appears in the world in exactly one place -- the
+// tunnel's guidance strip -- so the car-side rim light that used it is a cool
+// periwinkle-white instead: still a blue rim, but not the brand's signal
+// colour with no source in the scene.
+const COOL_RIM = "#9db4ff";
 
 type LightingProps = {
   rimLightRef: RefObject<THREE.PointLight | null>;
+  /** High tier adds the car's self-shadow map (it re-renders the whole car
+   * from the light every frame) and the faint blue fill light. */
+  tier: Tier;
 };
 
 /**
- * Key / fill / rim setup plus a few thin rect-area lights for the long
- * specular streaks across the paint. Rim light starts at intensity 0 --
- * Hero.tsx's load-sequence timeline ramps it up once the model is visible.
- * Its position is driven every frame by InteractionSystem, not here.
+ * Key / fill / rim on the car. The long thin specular streaks across the
+ * paint used to come from three RectAreaLights; those cost ~18 ms a frame on
+ * an integrated GPU (LTC shading on every car pixel) and are now thin
+ * Lightformers in the Environment instead (see ENV_FORMERS in worlds.ts),
+ * which reflect in the clearcoat identically for free. Rim light starts at
+ * intensity 0 -- HeroExperience's load timeline ramps it up once the model is
+ * visible. Its position is driven every frame by InteractionSystem.
  */
-export function Lighting({ rimLightRef }: LightingProps) {
+export function Lighting({ rimLightRef, tier }: LightingProps) {
   return (
     <>
       <directionalLight
         position={[-4, 6, 4]}
         intensity={2.2}
         color="#eef4ff"
-        castShadow
+        castShadow={tier === "high"}
         shadow-mapSize={[1024, 1024]}
         shadow-bias={-0.0005}
       />
 
-      <directionalLight position={[-6, 1.5, 1]} intensity={0.35} color={FORD_COLORS.blue} />
+      {/* Every light is evaluated for every car pixel, so the lights that add
+          least are the first to go on the lighter tiers. */}
+      {tier === "high" && <directionalLight position={[-6, 1.5, 1]} intensity={0.35} color={FORD_COLORS.blue} />}
 
       <pointLight
         ref={rimLightRef}
         position={[1.4, 1.1, -3.2]}
         intensity={0}
         distance={8}
-        color={FORD_COLORS.grabber}
-      />
-
-      <rectAreaLight
-        position={[3.2, 2.2, 2]}
-        rotation={[0, Math.PI / 3, 0]}
-        width={0.15}
-        height={4}
-        intensity={6}
-        color="#eaf1ff"
-      />
-      <rectAreaLight
-        position={[-3, 1.6, 2.6]}
-        rotation={[0, -Math.PI / 4, 0]}
-        width={0.15}
-        height={3}
-        intensity={4}
-        color={FORD_COLORS.grabber}
-      />
-      <rectAreaLight
-        position={[0, 2.6, -3.5]}
-        rotation={[Math.PI / 8, Math.PI, 0]}
-        width={4}
-        height={0.12}
-        intensity={3}
-        color="#eaf1ff"
+        color={COOL_RIM}
       />
     </>
   );

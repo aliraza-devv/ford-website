@@ -11,14 +11,12 @@ import { FORD_COLORS, PAINT_SHADER } from "@/lib/theme";
  * the patch only overrides the base albedo color (right after the chunk
  * that would normally read material.color/map) with a noise-distorted
  * radial blob mask blended between uColorA (the current paint) and
- * uColorB (a hover preview, or a swatch's target color during a sweep),
- * plus a thin Grabber Fresnel rim that brightens while the blob is active.
+ * uColorB (the hover preview colour), plus a thin Grabber Fresnel rim that
+ * brightens while the blob is active.
  *
- * Hover-follow and the one-shot "sweep" (Step 7's swatch click) are the
- * SAME mask -- just driven differently: hover lerps uBlobUv toward the
- * cursor every frame; a sweep GSAP-tweens uBlobRadius from 0 to full
- * coverage from a fixed origin. See useFrame in the consumer (MustangModel)
- * for the per-frame lerp, and PaintSelector for the sweep tween.
+ * The mask follows the cursor: hover lerps uBlobUv toward it every frame
+ * (see useFrame in the consumer, MustangModel) and the radius eases in and
+ * out on enter/leave.
  */
 export type LiquidPaintUniforms = {
   uColorA: { value: THREE.Color };

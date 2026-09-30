@@ -1,55 +1,57 @@
 "use client";
 
-import { type RefObject } from "react";
 import { useFitText } from "@/hooks/useFitText";
 import { LAYOUT } from "@/config/composition";
 import { HERO_COPY } from "@/lib/theme";
 import { Navbar } from "./Navbar";
 import { StatsPanel } from "./StatsPanel";
-import { PaintSelector } from "./PaintSelector";
+import { DriveHud } from "./DriveHud";
 import { AudioToggle } from "./AudioToggle";
-import type { MustangModelHandle } from "./MustangModel";
 
 type HeroProps = {
   loaded: boolean;
-  paintControllerRef: RefObject<MustangModelHandle | null>;
 };
 
 /**
- * Purely presentational DOM content for the hero stage -- the headline,
- * side panels, and chrome. Scene/Sky/Road/refs/the load-in timeline now
- * live in HeroExperience.tsx, which owns the pinned stage this renders
+ * Purely presentational DOM content for the hero stage -- the headline's
+ * layout anchor, side panels, and chrome. Scene/world/refs/the load-in
+ * timeline now live in HeroExperience.tsx, which owns the pinned stage this renders
  * into and the scroll transition into Section2. Only the headline and the
  * scroll cue carry `hero-fade-content` -- everything else (nav, stats,
  * paint selector, audio toggle) stays relevant and visible in section 2
  * too, so it isn't tied to the hero-specific fade.
  */
-export function Hero({ loaded, paintControllerRef }: HeroProps) {
+export function Hero({ loaded }: HeroProps) {
   const headlineRef = useFitText<HTMLHeadingElement>();
 
   return (
     <>
-      {/* Layer 3: the headline. FIX 3: constrained to the gutter-bounded
-          center column (never full-bleed) with a measure-and-fit font
-          size instead of a guessed clamp(), and its bottom edge pinned to
+      {/* The headline. FIX 3: constrained to the gutter-bounded center
+          column (never full-bleed) with a measure-and-fit font size instead
+          of a guessed clamp(), and its bottom edge pinned to
           LAYOUT.headlineBaselineY so it sits in its own band below the
-          navbar. Sits BELOW the car canvas in z-order (z-10 vs z-20) but
-          above Road/Sky. */}
+          navbar.
+
+          It is no longer what you SEE: the visible headline is drawn inside
+          the 3D canvas (world/HeadlinePlane) so it can sit between the world
+          and the car in depth. This element stays as the single source for
+          its layout rectangle, fitted font size and computed font, for the
+          scroll fade (`hero-fade-content`, still tweened here), and as the
+          real <h1> for screen readers and SEO -- hence transparent, not
+          removed. Its mouse-parallax transform moved into HeadlinePlane. */}
       <div
-        className="hero-fade-content pointer-events-none absolute z-10 flex justify-center overflow-hidden"
+        className="hero-headline-wrap hero-fade-content pointer-events-none absolute z-10 flex justify-center overflow-hidden"
         style={{
           left: `${LAYOUT.sideGutter * 100}%`,
           right: `${LAYOUT.sideGutter * 100}%`,
           top: 0,
           height: `${LAYOUT.headlineBaselineY * 100}%`,
           alignItems: "flex-end",
-          transform:
-            "translate3d(calc(var(--parallax-x, 0px) * 0.6), calc(var(--parallax-y, 0px) * 0.6), 0)",
         }}
       >
         <h1
           ref={headlineRef}
-          className="hero-headline select-none whitespace-nowrap font-display font-extrabold uppercase leading-[0.85] tracking-[-0.04em] text-white/80"
+          className="hero-headline select-none whitespace-nowrap font-display font-extrabold uppercase leading-[0.85] tracking-[-0.04em] text-transparent"
         >
           {HERO_COPY.headline}
         </h1>
@@ -59,7 +61,7 @@ export function Hero({ loaded, paintControllerRef }: HeroProps) {
           LAYOUT (mirrored left/right insets). Persistent across section 2
           too -- still relevant while looking at the car from the side. */}
       <StatsPanel loaded={loaded} />
-      <PaintSelector paintControllerRef={paintControllerRef} loaded={loaded} />
+      <DriveHud loaded={loaded} />
 
       {/* Layer 5: remaining UI chrome, nearly fixed, topmost, persistent. */}
       <div
