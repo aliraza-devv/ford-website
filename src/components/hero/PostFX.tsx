@@ -9,6 +9,7 @@ import {
   EffectComposer,
   HueSaturation,
   Noise,
+  SMAA,
   ToneMapping,
   Vignette,
 } from "@react-three/postprocessing";
@@ -75,6 +76,10 @@ export function PostFX({ tier, carGroupRef }: PostFXProps) {
     <Noise key="noise" blendFunction={BlendFunction.SOFT_LIGHT} opacity={0.04} />,
     <Dither key="dither" />,
   );
+
+  // The low tier has no hardware multisampling, and its edges (the roofline, the mirrors, the
+  // lamps) came out stair-stepped. SMAA is about half a millisecond a frame and mends them.
+  if (tier === "low") effects.push(<SMAA key="smaa" />);
 
   return <EffectComposer multisampling={tier === "high" ? 4 : tier === "medium" ? 2 : 0}>{effects}</EffectComposer>;
 }

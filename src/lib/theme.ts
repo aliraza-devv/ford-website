@@ -11,7 +11,6 @@ export const FORD_COLORS = {
 export const HERO_COPY = {
   microLabel: "FORD MOTOR COMPANY / EST. 1903",
   headline: "BUILT FORD TOUGH",
-  scrollIndicator: "SCROLL TO DISCOVER",
   // Swapped from the GTD to the Shelby GT500 model -- copy corrected to
   // match (same "don't ship mismatched specs" rule FIX 9 established for
   // the GTD swap).
@@ -23,26 +22,36 @@ export const HERO_COPY = {
 
 export const MODEL_URL = "/models/mustang-shelby-gt500.glb";
 
+/**
+ * The car's paint. Ford's corporate blue (FORD_COLORS.blue) is nearly black as a body colour:
+ * lit by a dark night it gave a car with no panels to read, only a grille-shaped hole. This is a
+ * deep sapphire, dark enough to be the night's, light enough to show the hood, the fenders and
+ * the shoulder line.
+ */
+export const PAINT_BASE = "#0a2d96";
+
+/**
+ * One figure on the hero's left-hand panel: a number, its unit and a short
+ * caption. A figure with a `value` counts up from zero when the page loads
+ * (StatsPanel); the rest are static text.
+ */
 export type StatDef = {
-  micro: string;
+  /** The figure as it reads when it is not animated, and its final text when it is. */
+  figure: string;
+  /** Present on figures that count up: the final value and its decimal places. */
+  value?: number;
+  decimals?: number;
   unit: string;
-  /** Static text before the animated number, e.g. "UNDER " for "UNDER 3.0s". */
-  prefix: string;
-  value: number;
-  decimals: number;
-  suffix: string;
-  /** Renders verbatim in place of prefix+value+suffix. For stats that aren't
-   * really numbers ("7-SPD") and so can't be composed arithmetically. Only
-   * valid on non-counting rows -- StatsPanel's count-up tween writes
-   * prefix/value/suffix directly and would overwrite this. */
-  display?: string;
+  caption: string;
 };
 
-// Corrected to the Shelby GT500's actual specs (was the GTD's).
+// Ford's published figures for the 2020-2022 Shelby GT500: 760 hp, 625 lb-ft and
+// 0-60 mph in 3.3 seconds. (The panel used to read "under 3.3s"; Ford's claim is
+// 3.3 seconds, so that is what it says.)
 export const STATS: StatDef[] = [
-  { micro: "ACCELERATION", unit: "0-60 MPH", prefix: "UNDER ", value: 3.3, decimals: 1, suffix: "s" },
-  { micro: "HORSEPOWER", unit: "", prefix: "", value: 760, decimals: 0, suffix: "" },
-  { micro: "TORQUE", unit: "LB-FT", prefix: "", value: 625, decimals: 0, suffix: "" },
+  { figure: "3.3", value: 3.3, decimals: 1, unit: "s", caption: "0 to 60 mph" },
+  { figure: "760", value: 760, decimals: 0, unit: "hp", caption: "Power" },
+  { figure: "625", value: 625, decimals: 0, unit: "lb-ft", caption: "Torque" },
 ];
 
 // Section 2's stat set -- swapped in for STATS (via the same hero-fade-content
@@ -56,9 +65,9 @@ export const STATS: StatDef[] = [
 // GT500's varies by whether the Carbon Fiber Track Pack is fitted, and a
 // spec panel is the wrong place to print a number that needs an asterisk.
 export const SECTION2_STATS: StatDef[] = [
-  { micro: "ENGINE", unit: "SUPERCHARGED V8", prefix: "", value: 5.2, decimals: 1, suffix: "L", display: "5.2L" },
-  { micro: "TRANSMISSION", unit: "DUAL-CLUTCH", prefix: "", value: 7, decimals: 0, suffix: "", display: "7-SPD" },
-  { micro: "TOP SPEED", unit: "MPH", prefix: "", value: 180, decimals: 0, suffix: "", display: "180" },
+  { figure: "5.2", unit: "L", caption: "Supercharged V8" },
+  { figure: "7", unit: "speed", caption: "Dual-clutch" },
+  { figure: "180", unit: "mph", caption: "Top speed" },
 ];
 
 // Camera / rig tuning. Kept in one place so positions/angles can be nudged
@@ -90,6 +99,20 @@ export const RIG = {
   // headlights, no taillights, no rear diffuser.
   carFrontYaw: 0,
   carBaseTiltX: -0.02,
+
+  // The hero's own view, which is not the camera the rest of the page is built on (cameraPosition
+  // above sets the car's scale and where Section 2 begins): a straight front view. The camera is
+  // dead in front of the car, at the height of its bonnet's edge, and LEVEL (it looks along the
+  // road, neither down at the car nor up at it, so the car's vertical lines stay vertical and the
+  // horizon runs through the middle of the picture), on a longer lens than the rest of the page
+  // uses, so the nose is not stretched toward the viewer. That puts the car in the lower half of
+  // the frame, under the headline, without aiming the camera at it. Everything here blends into
+  // the old view as the page scrolls to Section 2, so that part of the move is as it was.
+  hero: {
+    position: [0, 0.78, 6.1] as [number, number, number],
+    lookAt: [0, 0.78, 0] as [number, number, number],
+    fov: 28,
+  },
 
   maxYaw: (6 * Math.PI) / 180,
   maxPitch: (3 * Math.PI) / 180,

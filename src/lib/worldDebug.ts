@@ -10,4 +10,9 @@ export const worldDebug = {
   horizon: true,
   /** Lamp posts (with their pooled lights) and the barrier. */
   props: true,
+  /** Parts of the Section 4 plant, switched off one at a time to find what a
+   * frame costs. */
+  plant: { floor: true, hall: true, gantries: true, robots: true, sparks: true, car: true },
+  /** How many times the plant's environment cube has been refreshed. */
+  envUpdates: 0,
 };

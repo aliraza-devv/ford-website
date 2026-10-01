@@ -173,11 +173,14 @@ const attachConsole = (p) => {
 async function loadAndWait(p) {
   console.log(`URL: ${URL_BASE}/${query}`);
   await p.goto(`${URL_BASE}/${query}`, { waitUntil: "domcontentloaded", timeout: 180_000 });
-  // Loaded + intro finished == the scroll cue (last thing in the intro timeline) is fully visible.
+  // Loaded + intro finished == the navbar (last thing in the intro timeline) is fully visible.
   await p.waitForFunction(
     () => {
-      const el = document.querySelector(".hero-scrollcue");
-      return !!el && getComputedStyle(el).opacity === "1" && !!window.__lenis;
+      const nav = document.querySelector(".hero-navbar");
+      const stat = document.querySelector('[data-stat="0"]');
+      // The navbar is visible before the intro runs; the stats count-up
+      // reaching its final value is what says the intro has finished.
+      return !!nav && getComputedStyle(nav).opacity === "1" && !!stat && /3.3/.test(stat.textContent ?? "") && !!window.__lenis;
     },
     null,
     { timeout: 240_000 },
@@ -242,7 +245,6 @@ const domState = () =>
       heroFade: o(".hero-headline-wrap"),
       section2: o(".section2-fade-content"),
       section3: o(".section3-fade-content"),
-      scrollCue: o(".hero-scrollcue"),
     };
   });
 result.reverse = { initial: await domState() };

@@ -1,0 +1,42 @@
+{
+  "mustang": {
+    "src": "/scenes/mustang.webp",
+    "width": 1128,
+    "height": 695,
+    "span": 1112,
+    "density": 1.5,
+    "horizon": 93,
+    "contact": 359,
+    "centre": 0.4858
+  },
+  "bronco": {
+    "src": "/scenes/bronco.webp",
+    "width": 1583,
+    "height": 936,
+    "span": 1217,
+    "density": 1.6256,
+    "horizon": 278,
+    "contact": 569,
+    "centre": 0.427
+  },
+  "f150": {
+    "src": "/scenes/f150.webp",
+    "width": 1465,
+    "height": 763,
+    "span": 1110,
+    "density": 1.219,
+    "horizon": 210,
+    "contact": 428,
+    "centre": 0.4242
+  },
+  "explorer": {
+    "src": "/scenes/explorer.webp",
+    "width": 1750,
+    "height": 1056,
+    "span": 1394,
+    "density": 1.7737,
+    "horizon": 319,
+    "contact": 636,
+    "centre": 0.4369
+  }
+}

@@ -2,7 +2,7 @@
 
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
-import { FORD_COLORS, PAINT_SHADER } from "@/lib/theme";
+import { FORD_COLORS, PAINT_BASE, PAINT_SHADER } from "@/lib/theme";
 
 /**
  * A real MeshPhysicalMaterial patched via onBeforeCompile -- NOT a flat
@@ -29,7 +29,7 @@ export type LiquidPaintUniforms = {
 
 export function useLiquidPaintMaterial() {
   const uniformsRef = useRef<LiquidPaintUniforms>({
-    uColorA: { value: new THREE.Color(FORD_COLORS.blue) },
+    uColorA: { value: new THREE.Color(PAINT_BASE) },
     uColorB: { value: new THREE.Color(FORD_COLORS.grabber) },
     uBlobUv: { value: new THREE.Vector2(0.5, 0.5) },
     uBlobRadius: { value: 0 },
@@ -39,12 +39,12 @@ export function useLiquidPaintMaterial() {
 
   const material = useMemo(() => {
     const mat = new THREE.MeshPhysicalMaterial({
-      color: FORD_COLORS.blue,
-      // FIX 7: bumped up from 0.6/0.35/0.12 -- automotive clearcoat paint
-      // needs to be considerably more reflective/glossy than that to catch
-      // visible highlights instead of reading as a flat color fill.
-      metalness: 0.9,
-      roughness: 0.25,
+      color: PAINT_BASE,
+      // Metallic paint over a dielectric base: some of the colour is the base's own, lit
+      // by the lights, and some is the flake's reflection. At 0.9 it was all reflection of a
+      // dark night, which is black.
+      metalness: 0.62,
+      roughness: 0.27,
       clearcoat: 1,
       clearcoatRoughness: 0.05,
       envMapIntensity: 1.5,

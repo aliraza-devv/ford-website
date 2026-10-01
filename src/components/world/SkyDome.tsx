@@ -4,7 +4,7 @@
  * useFrame runs outside React's render/commit cycle and is meant to mutate
  * this uniforms object every frame (same note as the retired Road.tsx). */
 
-import { type RefObject, useMemo } from "react";
+import { type RefObject, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import type { ParallaxState } from "@/hooks/useParallax";
@@ -96,6 +96,7 @@ type SkyDomeProps = {
 };
 
 export function SkyDome({ parallaxRef, dither, clouds }: SkyDomeProps) {
+  const meshRef = useRef<THREE.Mesh>(null);
   const uniforms = useMemo(
     () => ({
       ...SKY_UNIFORMS,
@@ -108,6 +109,8 @@ export function SkyDome({ parallaxRef, dither, clouds }: SkyDomeProps) {
   );
 
   useFrame(() => {
+    // Inside the plant there is a roof and no sky to see; skip drawing it.
+    if (meshRef.current) meshRef.current.visible = scrollState.world < 2.9;
     uniforms.uTravel.value = scrollState.travel;
     // Sky parallax strength 0.1x, per the brief; it only has a horizontal
     // component to show, since the gradient itself is vertical.
@@ -117,7 +120,7 @@ export function SkyDome({ parallaxRef, dither, clouds }: SkyDomeProps) {
   });
 
   return (
-    <mesh renderOrder={-1000} frustumCulled={false}>
+    <mesh ref={meshRef} renderOrder={-1000} frustumCulled={false}>
       <sphereGeometry args={[1, 48, 24]} />
       <shaderMaterial
         vertexShader={vertexShader}

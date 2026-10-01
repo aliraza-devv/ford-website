@@ -39,6 +39,7 @@ export function EnvLamps({ live }: { live: boolean }) {
 
   useFrame(() => {
     const travel = live ? scrollState.travel : 0;
+    const inPlant = scrollState.factory > 0.001;
     const { yaw } = getCarPose(getStage());
     const cos = Math.cos(yaw);
     const sin = Math.sin(yaw);
@@ -63,7 +64,8 @@ export function EnvLamps({ live }: { live: boolean }) {
       const k2 = (RADIUS / distance) * BOOST;
       mesh.scale.set(1.0 * k2, 0.45 * k2, 1);
 
-      const weight = smooth(WINDOW_MIN, WINDOW_MIN + 14, z) * (1 - smooth(42, 56, z));
+      // The highway's lamps are not in the plant.
+      const weight = smooth(WINDOW_MIN, WINDOW_MIN + 14, z) * (1 - smooth(42, 56, z)) * (inPlant ? 0 : 1);
       material.color.copy(tint).multiplyScalar(INTENSITY * weight);
     }
   });

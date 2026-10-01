@@ -21,6 +21,8 @@
   --color-ford-black: var(--ford-black);
   --font-display: var(--font-inter);
   --font-body: var(--font-work-sans);
+  --font-plant-display: var(--font-barlow-condensed);
+  --font-plant-text: var(--font-barlow);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -74,6 +76,27 @@ button,
   cursor: var(--cursor-ring-hover) 22 22, pointer;
 }
 
+/* The drive-mode caption settling in when the mode changes (DriveHud). */
+@keyframes note-in {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.note-in {
+  animation: note-in 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .note-in {
+    animation: none;
+    opacity: 1;
+  }
+}
+
 /* AudioToggle's equalizer bars */
 @keyframes eq-bar {
   from {
@@ -84,20 +107,226 @@ button,
   }
 }
 
-/* Scroll cue's traveling dot, Step 7 bottom-center */
-@keyframes scroll-cue-dot {
-  0% {
-    transform: translateY(0);
-    opacity: 0;
+/* ======================================================================== the loader
+   One short drive. The GT500 swoops in from the left, holds for as long as the page is still
+   loading (usually not at all), and floors it: the whole scene speeds up and slides off to the right
+   on the car's heels, and the page is there where it was. It lasts about a second and never pads.
+
+   It is built from --w, the car's width, so it is the same at any size, and everything that moves is
+   a CSS animation of a transform: the compositor runs those without the page's main thread, so the
+   loader keeps its pace while the page behind it is blocked compiling shaders, which is exactly when
+   it is on screen. Speeds are in car widths per second, the car cruising at 1, so the wheels and the
+   road's dashes agree with one another. */
+.ld {
+  --w: clamp(300px, 38vw, 720px);
+  --ground: calc(50dvh + var(--w) * 0.14);
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  overflow: hidden;
+  contain: layout paint style;
+  /* The end of it, at 0.95 s: out of sight and out of the way of the page. (The page also takes it
+     out of the document, a little later.) */
+  animation: ld-gone 0s linear 0.95s forwards;
+}
+@keyframes ld-gone {
+  to {
+    visibility: hidden;
+    pointer-events: none;
   }
-  15% {
-    opacity: 1;
+}
+@media (max-width: 767px) {
+  .ld {
+    --w: 92vw;
   }
-  85% {
-    opacity: 1;
+}
+
+/* The panel is the loader's whole picture; it is what slides away. */
+.ld-panel {
+  position: absolute;
+  inset: 0;
+  background: #02030a;
+  /* the edge it uncovers the page with, as it slides away */
+  box-shadow: -48px 0 90px rgba(0, 0, 0, 0.55);
+  will-change: transform;
+  /* the way out: it slides off to the right just behind the car, from 0.47 s to 0.95 */
+  animation: ld-panel-out 0.48s cubic-bezier(0.6, 0, 0.3, 1) 0.47s both;
+}
+@keyframes ld-panel-out {
+  from {
+    transform: translate3d(0, 0, 0);
   }
-  100% {
-    transform: translateY(36px);
-    opacity: 0;
+  to {
+    transform: translate3d(104vw, 0, 0);
+  }
+}
+
+/* A low blue glow where the road meets the sky, behind the car, and nothing else. */
+.ld-glow {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(46% 30% at 50% var(--ground), rgba(30, 72, 176, 0.3), rgba(30, 72, 176, 0) 72%);
+}
+
+/* The road: a band across the screen, with the lane line running through it. */
+.ld-road {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(var(--ground) - var(--w) * 0.045);
+  height: calc(var(--w) * 0.2);
+  background:
+    linear-gradient(to bottom, rgba(54, 98, 214, 0.3) 0, rgba(54, 98, 214, 0) 40%),
+    linear-gradient(to bottom, #0c1224 0, #070b17 60%, #05070f 100%);
+}
+
+/* The lane line: a layer wider than the screen by one repeat of its dashes, slid left by exactly that
+   repeat, over and over. */
+.ld-dashes {
+  --p: calc(var(--w) * 0.5);
+  position: absolute;
+  left: 0;
+  top: calc(var(--w) * 0.12);
+  width: calc(100vw + var(--p));
+  height: calc(var(--w) * 0.011);
+  background-image: linear-gradient(to right, rgba(226, 233, 255, 0.58) 0 42%, rgba(226, 233, 255, 0) 42% 100%);
+  background-repeat: repeat-x;
+  background-size: var(--p) 100%;
+  animation: ld-stream 0.5s linear infinite;
+  will-change: transform;
+}
+@keyframes ld-stream {
+  to {
+    transform: translate3d(calc(var(--p) * -1), 0, 0);
+  }
+}
+
+/* The car. The outer box drives in and out; the inner one rides on its springs. */
+.ld-car {
+  position: absolute;
+  left: calc(50% - var(--w) / 2);
+  top: calc(var(--ground) - var(--w) * var(--cg));
+  width: var(--w);
+  height: calc(var(--w) * var(--aspect));
+  will-change: transform;
+  /* swoops in over the first 0.42 s, then drives out to the right, accelerating, until 0.9 */
+  animation:
+    ld-enter 0.42s cubic-bezier(0.16, 1, 0.3, 1) both,
+    ld-car-out 0.48s cubic-bezier(0.5, 0, 0.9, 0.55) 0.42s forwards;
+}
+@keyframes ld-enter {
+  from {
+    transform: translate3d(-62vw, 0, 0);
+  }
+  to {
+    transform: translate3d(0, 0, 0);
+  }
+}
+@keyframes ld-car-out {
+  to {
+    transform: translate3d(128vw, 0, 0);
+  }
+}
+.ld-bob {
+  position: absolute;
+  inset: 0;
+  animation: ld-bob 0.7s ease-in-out infinite;
+  will-change: transform;
+}
+@keyframes ld-bob {
+  50% {
+    transform: translate3d(0, calc(var(--w) * -0.0028), 0);
+  }
+}
+.ld-body {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  user-select: none;
+  /* the picture holds the car's reflection on a wet road; the road here is only so deep */
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(var(--gr) * 100%), transparent calc(var(--gr) * 100% + 21%));
+  mask-image: linear-gradient(to bottom, #000 calc(var(--gr) * 100%), transparent calc(var(--gr) * 100% + 21%));
+}
+.ld-wheel {
+  position: absolute;
+  display: block;
+  width: calc(var(--wheel) * 100%);
+  max-width: none;
+  aspect-ratio: 1;
+  left: calc((var(--x) - var(--wheel) / 2) * 100%);
+  top: calc((var(--y) - var(--wheel) / var(--aspect) / 2) * 100%);
+  animation: ld-spin 0.64s linear infinite;
+  will-change: transform;
+}
+@keyframes ld-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* The light: a bloom on each lamp and a soft pool on the road ahead, every gradient wholly inside its
+   box so no edge of any of them shows. */
+.ld-flare,
+.ld-pool,
+.ld-tail {
+  position: absolute;
+  display: block;
+  pointer-events: none;
+  mix-blend-mode: screen;
+}
+.ld-flare {
+  left: calc(var(--hx) * 100%);
+  top: calc(var(--hy) * 100%);
+  width: calc(var(--w) * 0.13);
+  height: calc(var(--w) * 0.13);
+  transform: translate(-50%, -50%);
+  background: radial-gradient(closest-side, rgba(255, 250, 238, 0.9), rgba(255, 244, 222, 0.3) 36%, rgba(255, 240, 210, 0));
+}
+.ld-pool {
+  left: calc(var(--nose) * 100%);
+  top: calc(var(--gr) * 100%);
+  width: calc(var(--w) * 0.7);
+  height: calc(var(--w) * 0.075);
+  transform: translate(-8%, -50%);
+  background: radial-gradient(closest-side, rgba(255, 240, 208, 0.22), rgba(255, 240, 208, 0));
+}
+.ld-tail {
+  left: calc(var(--tx) * 100%);
+  top: calc(var(--ty) * 100%);
+  width: calc(var(--w) * 0.15);
+  height: calc(var(--w) * 0.1);
+  transform: translate(-62%, -50%);
+  background: radial-gradient(closest-side, rgba(255, 56, 38, 0.5), rgba(255, 56, 38, 0));
+}
+
+/* Under the car, where it meets the road. */
+.ld-shadow {
+  position: absolute;
+  left: calc(var(--w) * 0.02);
+  top: calc(var(--gr) * 100%);
+  width: calc(var(--w) * 0.96);
+  height: calc(var(--w) * 0.06);
+  transform: translate(0, -62%);
+  background: radial-gradient(closest-side, rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0));
+}
+
+/* No motion asked for: the car stands on the road, and the loader only fades. */
+@media (prefers-reduced-motion: reduce) {
+  .ld *,
+  .ld-car,
+  .ld-panel {
+    animation: none !important;
+  }
+  .ld {
+    animation: ld-fade 0.3s ease-out 0.35s both;
+  }
+  @keyframes ld-fade {
+    to {
+      opacity: 0;
+      visibility: hidden;
+    }
   }
 }

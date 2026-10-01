@@ -4,49 +4,48 @@
  * useFrame writes fog, clear colour and transforms every frame, outside
  * React's render/commit cycle. */
 
-import { type ComponentType, type RefObject, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { type ComponentType, type RefObject, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
-import { Environment } from "@react-three/drei";
 import { damp } from "maath/easing";
 import * as THREE from "three";
 import type { ParallaxState } from "@/hooks/useParallax";
 import {
   ENV_FORMERS,
+  ENV_RUNTIME,
   MAX_SPEED,
   METER,
   SKY_HORIZON_COLOR,
   SPEED_PER_SCROLL_VELOCITY,
-  WORLD_RUNTIME,
   type EnvFormer,
   type WorldId,
   sampleWorld,
 } from "@/config/worlds";
+import { smoothstep } from "@/config/line";
+import { GROUND_Y } from "@/lib/hallSpace";
 import { getCarPose } from "@/lib/carPose";
 import { getDriveMode } from "@/lib/driveMode";
 import type { Tier } from "@/lib/perfTier";
-import { RIG } from "@/lib/theme";
 import { getStage, scrollState } from "@/lib/scrollState";
+import { worldDebug } from "@/lib/worldDebug";
 import { EnvLamps } from "./EnvLamps";
+import { GatedEnvironment } from "./GatedEnvironment";
 import { Highway } from "./Highway";
+import { Plant } from "./plant/Plant";
 import { roadShared } from "./roadShader";
 import { SkyDome } from "./SkyDome";
 
 type StageProps = { tier: Tier; parallaxRef: RefObject<ParallaxState> };
 
-// Adding a stage means adding its entry here and in WORLD_STAGES. Tunnel and
-// Garage are Stages B and C; until they exist the highway keeps showing
-// behind the side profile and the interior, so the scene is never empty.
+// Adding a stage means adding its entry here and in WORLD_STAGES. The tunnel
+// and garage are never built (the highway keeps showing behind the side
+// profile and the interior fades to black); the plant is Section 4.
 const STAGE_COMPONENTS: Record<WorldId, ComponentType<StageProps> | null> = {
   highway: Highway,
   tunnel: null,
   garage: null,
+  plant: Plant,
 };
 
-/** Tyre contact with the ground plane. The car sits at carGroundOffsetY but
- * carries a -0.02 rad nose-up tilt that lifts the front tyres ~3 cm and
- * sinks the rear ones by the same, so the ground is set halfway to split the
- * error rather than bury one axle. ContactShadows covers the rest. */
-const GROUND_Y = RIG.carGroundOffsetY - 0.016;
 
 function EnvPanel({ former, index }: { former: EnvFormer; index: number }) {
   const mesh = useRef<THREE.Mesh>(null);
@@ -56,11 +55,11 @@ function EnvPanel({ former, index }: { former: EnvFormer; index: number }) {
   // The Environment's static lightformers fade with the stage, not the
   // frame: intensity is whatever the sampled world says it is.
   useLayoutEffect(() => {
-    material.current?.color.copy(base).multiplyScalar(WORLD_RUNTIME.envIntensity[index]);
+    material.current?.color.copy(base).multiplyScalar(ENV_RUNTIME.envIntensity[index]);
     if (former.faceCenter) mesh.current?.lookAt(0, 0, 0);
   }, [base, index, former.faceCenter]);
   useFrame(() => {
-    material.current?.color.copy(base).multiplyScalar(WORLD_RUNTIME.envIntensity[index]);
+    material.current?.color.copy(base).multiplyScalar(ENV_RUNTIME.envIntensity[index]);
   });
 
   return (
@@ -89,6 +88,37 @@ type WorldProps = {
 export function World({ parallaxRef, tier, bareRenderer }: WorldProps) {
   const { scene, gl } = useThree();
   const groupRef = useRef<THREE.Group>(null);
+  // True while the plant walkthrough is on screen.
+  const plantOnRef = useRef(false);
+  const envWasPlant = useRef(false);
+
+  // When the environment cube is refreshed (see GatedEnvironment for why this
+  // is a policy and not a prop). A refresh is the most expensive thing the
+  // scene does on an integrated GPU, so it happens as rarely as the picture
+  // allows:
+  //  - Sections 1-3: as they always were. The low tier bakes the cube once at
+  //    the highway's values; the others keep it live and follow the blend.
+  //  - Entering the plant: once, with the plant's values from the first frame.
+  //    That moment is the camera still inside the cabin, where no paint is in
+  //    view to show the change.
+  //  - In the plant: never. Its lights are rows that look the same from every
+  //    point along them, so a car sliding down the line sees the same cube all
+  //    the way; the one thing that moves past it, the inspection tunnel's bars,
+  //    is drawn into the paint directly (see PlantPaintLight).
+  //  - Leaving it (scrolling back): once, back to the Section 1-3 values.
+  const shouldUpdateEnv = useCallback(
+    (frame: number) => {
+      const inPlant = plantOnRef.current;
+      if (inPlant !== envWasPlant.current) {
+        envWasPlant.current = inPlant;
+        worldDebug.envUpdates++;
+        return true;
+      }
+      if (inPlant) return false;
+      return tier === "low" ? frame <= 2 : true;
+    },
+    [tier],
+  );
 
   const fog = useMemo(() => new THREE.FogExp2(SKY_HORIZON_COLOR.clone(), 0.01), []);
 
@@ -106,8 +136,21 @@ export function World({ parallaxRef, tier, bareRenderer }: WorldProps) {
     // `world` is the smoothed 0-2 value that drives blends. Anything that
     // has to stay locked to the car (the group pose below) reads the raw
     // stage instead, or it would visibly lag the car it sits under.
-    damp(scrollState, "world", stage, 0.3, dt);
+    // The plant is one more world past the interior: it fades in over the
+    // first tenth of the walkthrough, while the camera is still leaving the
+    // cabin, so the hall's air arrives with its lights.
+    const plantLead = smoothstep(0, 0.1, scrollState.factory);
+    damp(scrollState, "world", stage + plantLead, 0.3, dt);
+
+    const plantNow = scrollState.factory > 0.001;
+    if (plantNow !== plantOnRef.current) {
+      plantOnRef.current = plantNow;
+    }
     const sampled = sampleWorld(scrollState.world);
+    // The environment samples the world on its own terms: the plant's values the
+    // moment the plant is on, the highway's while a low-tier cube is baked, the
+    // live blend otherwise.
+    sampleWorld(plantNow ? 3 : tier === "low" ? 0 : scrollState.world, ENV_RUNTIME);
 
     // Flow speed: the stage's resting speed plus a push from scroll
     // velocity, smoothed, never below the resting speed.
@@ -145,16 +188,12 @@ export function World({ parallaxRef, tier, bareRenderer }: WorldProps) {
     <>
       <SkyDome parallaxRef={parallaxRef} dither={bareRenderer} clouds={tier !== "low"} />
 
-      <Environment
-        frames={tier === "low" ? 1 : Infinity}
-        resolution={256}
-        background={false}
-      >
+      <GatedEnvironment resolution={256} shouldUpdate={shouldUpdateEnv}>
         {ENV_FORMERS.map((former, i) => (
           <EnvPanel key={former.id} former={former} index={i} />
         ))}
         <EnvLamps live={tier !== "low"} />
-      </Environment>
+      </GatedEnvironment>
 
       <group ref={groupRef} scale={METER}>
         {(Object.keys(STAGE_COMPONENTS) as WorldId[]).map((id) => {

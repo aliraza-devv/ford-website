@@ -43,3 +43,9 @@ next-env.d.ts
 # raw model exports/zips used only for the Step-1 audit -- not referenced
 # by the app (MODEL_URL points at public/models/mustang-gtd.glb)
 /public/3D Models/
+
+# verification screenshots, the user's reference pictures and the raw source photos of the cars
+# (scripts/cut-cars.mjs reads public/car images; only its output, public/scenes, ships)
+/reference/
+/public/reference/
+/public/car images/

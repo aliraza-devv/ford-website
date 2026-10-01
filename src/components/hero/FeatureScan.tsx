@@ -55,7 +55,6 @@ export function FeatureScan({ screenRef }: FeatureScanProps) {
   const leaderRefs = useRef<(SVGPathElement | null)[]>([]);
   const labelRefs = useRef<(HTMLDivElement | null)[]>([]);
   const titleRefs = useRef<(HTMLSpanElement | null)[]>([]);
-  const bodyRefs = useRef<(HTMLSpanElement | null)[]>([]);
 
   // Mobile has no room for leaders and labels beside the car, so it shows the
   // markers and one caption for the latest feature to light. React state is
@@ -66,7 +65,18 @@ export function FeatureScan({ screenRef }: FeatureScanProps) {
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     let raf = 0;
     let idle = false;
+    let handedOver = false;
     const leaderKey: string[] = [];
+    // A callout is only its heading now, so each label is exactly as wide as
+    // its heading and each leader's rule is cut to match.
+    const widths: number[] = [];
+    let measuredFor = -1;
+    const measure = () => {
+      HOTSPOTS.forEach((_, i) => {
+        widths[i] = labelRefs.current[i]?.offsetWidth ?? 0;
+      });
+    };
+    void document.fonts?.ready.then(() => measure());
     let lastCaption = -1;
 
     const hideAll = () => {
@@ -88,6 +98,30 @@ export function FeatureScan({ screenRef }: FeatureScanProps) {
       raf = requestAnimationFrame(tick);
       const root = rootRef.current;
       if (!root) return;
+
+      // Section 4 takes over the screen: the cabin features fade out as the
+      // camera leaves the car, and stay out (and unpainted) until the user
+      // scrolls back up into the scan.
+      const handover = scrollState.factory;
+      if (handover > 0.0005) {
+        const keep = 1 - smooth(0, 0.035, handover);
+        root.style.opacity = String(keep);
+        if (keep <= 0.001) {
+          if (!handedOver) {
+            root.style.visibility = "hidden";
+            handedOver = true;
+          }
+          return;
+        }
+        if (handedOver) {
+          root.style.visibility = "";
+          handedOver = false;
+        }
+      } else if (handedOver || root.style.opacity !== "") {
+        root.style.opacity = "";
+        root.style.visibility = "";
+        handedOver = false;
+      }
 
       const f = scrollState.features;
       // Before the scan starts (the whole hero and approach) there is
@@ -123,7 +157,10 @@ export function FeatureScan({ screenRef }: FeatureScanProps) {
         bladeRef.current.style.transform = `translate3d(${barX}px,0,0)`;
       }
 
-      const ruleLength = Math.min(Math.max(W * 0.135, 230), 300);
+      if (W !== measuredFor) {
+        measuredFor = W;
+        measure();
+      }
       const leg = 62 * s; // each axis of the 45-degree run
       // Mobile caption: the scan is split into one segment per feature, in
       // left-to-right order. It does not depend on where the anchors land:
@@ -181,7 +218,7 @@ export function FeatureScan({ screenRef }: FeatureScanProps) {
         const sy = h.rise === "up" ? -1 : 1;
         const dx = ax + sx * leg;
         const dy = ay + sy * leg;
-        const rx = dx + sx * ruleLength;
+        const rx = dx + sx * ((widths[i] || 150) + 14);
         const path = `M${ax.toFixed(1)} ${ay.toFixed(1)}L${dx.toFixed(1)} ${dy.toFixed(1)}L${rx.toFixed(1)} ${dy.toFixed(1)}`;
         const leader = leaderRefs.current[i];
         if (leader) {
@@ -197,13 +234,10 @@ export function FeatureScan({ screenRef }: FeatureScanProps) {
         const left = Math.min(dx, rx);
         const above = h.rise === "up";
         label.style.opacity = "1";
-        label.style.width = `${ruleLength}px`;
         label.style.transform = `translate3d(${left.toFixed(1)}px,${(above ? dy - 13 : dy + 13).toFixed(1)}px,0)${above ? " translateY(-100%)" : ""}`;
 
         const eTitle = easeOut(clamp01((t - 0.36) / 0.4));
-        const eBody = easeOut(clamp01((t - 0.5) / 0.42));
         if (titleRefs.current[i]) titleRefs.current[i]!.style.transform = `translate3d(0,${((1 - eTitle) * 112).toFixed(1)}%,0)`;
-        if (bodyRefs.current[i]) bodyRefs.current[i]!.style.transform = `translate3d(0,${((1 - eBody) * 112).toFixed(1)}%,0)`;
       });
 
       if (isMobile && newest !== lastCaption) {
@@ -317,28 +351,17 @@ export function FeatureScan({ screenRef }: FeatureScanProps) {
                 labelRefs.current[i] = el;
               }}
               data-cursor-hover
-              className="feature pointer-events-auto absolute left-0 top-0 flex cursor-default flex-col gap-2 opacity-0 transition-[opacity] duration-300 [text-shadow:0_1px_16px_rgba(0,6,18,0.95)]"
+              className="feature pointer-events-auto absolute left-0 top-0 w-max cursor-default whitespace-nowrap opacity-0 transition-[opacity] duration-300 [text-shadow:0_1px_16px_rgba(0,6,18,0.95)]"
             >
               <span className="block overflow-hidden pb-[3px]">
                 <span
                   ref={(el) => {
                     titleRefs.current[i] = el;
                   }}
-                  className="block font-display text-[clamp(17px,1.2vw,23px)] font-extrabold uppercase leading-[1.05] tracking-[-0.02em] text-white will-change-transform"
+                  className="block font-display text-[clamp(18px,1.3vw,25px)] font-extrabold uppercase leading-[1.05] tracking-[-0.02em] text-white will-change-transform"
                   style={{ transform: "translate3d(0,112%,0)" }}
                 >
                   {h.title}
-                </span>
-              </span>
-              <span className="block overflow-hidden">
-                <span
-                  ref={(el) => {
-                    bodyRefs.current[i] = el;
-                  }}
-                  className="block max-w-[30ch] font-body text-[clamp(12.5px,0.82vw,14.5px)] leading-[1.45] text-white/80 will-change-transform"
-                  style={{ transform: "translate3d(0,112%,0)" }}
-                >
-                  {h.body}
                 </span>
               </span>
             </div>
@@ -347,7 +370,7 @@ export function FeatureScan({ screenRef }: FeatureScanProps) {
       )}
 
       {isMobile && (
-        <div className="absolute inset-x-6 bottom-24 z-[30] min-h-[76px]">
+        <div className="absolute inset-x-6 bottom-24 z-[30] min-h-[28px]">
           {HOTSPOTS.map((h, i) => (
             <div
               key={h.id}
@@ -358,7 +381,6 @@ export function FeatureScan({ screenRef }: FeatureScanProps) {
               <p className="font-display text-[19px] font-extrabold uppercase leading-none tracking-[-0.02em] text-white">
                 {h.title}
               </p>
-              <p className="mt-2 max-w-[34ch] font-body text-[14px] leading-[1.45] text-white/80">{h.body}</p>
             </div>
           ))}
         </div>

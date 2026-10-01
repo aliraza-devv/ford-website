@@ -25,9 +25,24 @@ export type ScrollState = {
   /** 0-1 across the interior feature scan that follows Stage 2 -> 3, while the
    * camera holds still inside the cabin (see FeatureScan). */
   features: number;
-  /** 0-2 world float (0 highway, 1 tunnel, 2 garage), damped toward
-   * getStage() by <World />. Drives colour/exposure/fog blends; geometry
-   * that must stay locked to the car reads getStage() directly instead. */
+  /** 0-1 across the plant walkthrough (Section 4) that follows the feature
+   * scan. The camera leaves the cabin, the hall lights up, and the car is
+   * taken apart and rebuilt station by station. Everything in the plant --
+   * hall position, camera, part offsets, paint sweep, overlay copy -- is a
+   * pure function of this one number, so scrolling back reverses it exactly. */
+  factory: number;
+  /** 0-1 as the plant map rises over the plant (Section 5's cover), then 0-1 across
+   * the tour of Ford's plants itself once it is pinned. Neither touches the 3D
+   * world; they are read by the map's own loop. */
+  cover5: number;
+  map: number;
+  /** The same two for the road finder (Section 6), rising over the map. */
+  cover6: number;
+  find: number;
+  /** 0-3 world float (0 highway, 1 tunnel, 2 garage/cabin, 3 plant), damped
+   * toward its target by <World />. Drives colour/exposure/fog blends;
+   * geometry that must stay locked to the car reads getStage() directly
+   * instead. */
   world: number;
   /** Lenis scroll velocity, px per frame (signed). Written every tick from
    * useSmoothScroll, read by the world to couple road speed to scrolling. */
@@ -43,6 +58,11 @@ export const scrollState: ScrollState = {
   stage12: 0,
   stage23: 0,
   features: 0,
+  factory: 0,
+  cover5: 0,
+  map: 0,
+  cover6: 0,
+  find: 0,
   world: 0,
   velocity: 0,
   speed: 0,

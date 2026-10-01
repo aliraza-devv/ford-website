@@ -22,7 +22,12 @@ function smooth(a: number, b: number, x: number) {
   return t * t * (3 - 2 * t);
 }
 
-/** Value noise on a wrapping lattice, so every map built from it tiles. */
+/** Value noise on a wrapping lattice, so every map built from it tiles.
+ *
+ * This runs on the main thread while the page loads, and at 1024 x 1024 with seven octaves it was
+ * the largest single piece of work between the page arriving and the loader leaving (about 1.7 s on
+ * an integrated GPU's laptop). So its inner loop does no work it can do once per column: each
+ * octave's x lookups are tabulated first, and the loop reads four lattice points and blends. */
 function tileableFbm(
   width: number,
   height: number,
@@ -34,29 +39,41 @@ function tileableFbm(
   let amp = 1;
   let total = 0;
 
+  const colA = new Int32Array(width);
+  const colB = new Int32Array(width);
+  const colS = new Float32Array(width);
+
   for (let o = 0; o < octaves; o++) {
     const nx = cellsX << o;
     const ny = cellsY << o;
     const grid = new Float32Array(nx * ny);
     for (let i = 0; i < grid.length; i++) grid[i] = rand();
 
+    // Each column's two lattice columns and its blend, once per octave.
+    for (let x = 0; x < width; x++) {
+      const u = (x / width) * nx;
+      const x0 = Math.floor(u);
+      const fx = u - x0;
+      colA[x] = x0 % nx;
+      colB[x] = (x0 + 1) % nx;
+      colS[x] = fx * fx * (3 - 2 * fx);
+    }
+
     for (let y = 0; y < height; y++) {
       const v = (y / height) * ny;
       const y0 = Math.floor(v);
       const fy = v - y0;
       const sy = fy * fy * (3 - 2 * fy);
-      const ya = y0 % ny;
-      const yb = (y0 + 1) % ny;
+      const rowA = (y0 % ny) * nx;
+      const rowB = ((y0 + 1) % ny) * nx;
+      const row = y * width;
       for (let x = 0; x < width; x++) {
-        const u = (x / width) * nx;
-        const x0 = Math.floor(u);
-        const fx = u - x0;
-        const sx = fx * fx * (3 - 2 * fx);
-        const xa = x0 % nx;
-        const xb = (x0 + 1) % nx;
-        const top = grid[ya * nx + xa] * (1 - sx) + grid[ya * nx + xb] * sx;
-        const bottom = grid[yb * nx + xa] * (1 - sx) + grid[yb * nx + xb] * sx;
-        out[y * width + x] += (top * (1 - sy) + bottom * sy) * amp;
+        const a = colA[x];
+        const b = colB[x];
+        const sx = colS[x];
+        const top = grid[rowA + a] * (1 - sx) + grid[rowA + b] * sx;
+        const bottom = grid[rowB + a] * (1 - sx) + grid[rowB + b] * sx;
+        out[row + x] += (top * (1 - sy) + bottom * sy) * amp;
       }
     }
     total += amp;
@@ -97,7 +114,10 @@ function grayTexture(width: number, height: number, value: (i: number) => number
  * tarmac. Mostly wet with dry islands, as just after rain.
  */
 export function makeRoughnessTexture(): THREE.CanvasTexture {
-  const size = 1024;
+  // 512 is plenty: the map is a slow wash of wet and dry patches (its finest layer varies the
+  // roughness by a twelfth of its range), read through linear filtering, and it costs a quarter of
+  // what 1024 did to make while the page is loading.
+  const size = 512;
   const broad = tileableFbm(size, size, { cellsX: 4, cellsY: 4, octaves: 5, persistence: 0.55, seed: 11 });
   const fine = tileableFbm(size, size, { cellsX: 64, cellsY: 64, octaves: 2, persistence: 0.5, seed: 29 });
   return grayTexture(size, size, (i) => {

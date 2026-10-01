@@ -11,8 +11,10 @@ import type { HotspotScreenMap } from "@/lib/hotspots";
 import { capTier, getTier, pinTier, stepDownTier, type Tier, useTier } from "@/lib/perfTier";
 import { scrollState } from "@/lib/scrollState";
 import { worldDebug } from "@/lib/worldDebug";
+import { isStageLive, onStageLive } from "@/lib/stageLive";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { Lighting } from "./Lighting";
+import { PlantFill } from "@/components/world/plant/PlantFill";
 import { MustangModel } from "./MustangModel";
 import { InteractionSystem } from "./InteractionSystem";
 import { World } from "@/components/world/World";
@@ -34,6 +36,8 @@ type SceneProps = {
   /** 0 -> 1 progress of the headline's per-letter load-in, tweened by
    * HeroExperience's timeline and read by HeadlinePlane. */
   headlineIntroRef: RefObject<HeadlineIntro>;
+  /** Called once the model is in the scene and a few frames of it have been drawn. */
+  onReady?: () => void;
 };
 
 // ---------------------------------------------------------------- quality
@@ -50,6 +54,47 @@ const FAST_MS = 13.5;
 /** Settling time after mount: model download, shader compiles and the intro
  * animation are not sustained slowness. */
 const GRACE_MS = 2500;
+
+/** Development only: hands the renderer, scene and camera to the console and the
+ * verification scripts (window.__fordGl), so a frame can be taken apart. */
+function DevProbe() {
+  const gl = useThree((s) => s.gl);
+  const scene = useThree((s) => s.scene);
+  const camera = useThree((s) => s.camera);
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+    (window as unknown as Record<string, unknown>).__fordGl = { gl, scene, camera };
+  }, [gl, scene, camera]);
+  return null;
+}
+
+/**
+ * Says the scene is ready: it is mounted inside the same Suspense as the car, so it appears only
+ * once the model has loaded, and the first frames (which carry the compiling of every shader)
+ * have then been drawn. The page fades the canvas in on it.
+ */
+function ReadySignal({ onReady }: { onReady?: () => void }) {
+  const frames = useRef(0);
+  useFrame(() => {
+    if (frames.current < 3 && ++frames.current === 3) onReady?.();
+  });
+  return null;
+}
+
+/**
+ * Stops the render loop while the plant map covers this stage completely (see
+ * lib/stageLive). Nothing the canvas drew would be seen, and its frames would be paid
+ * for with the time the map and the road finder need to scroll smoothly.
+ */
+function FrameGate() {
+  const setFrameloop = useThree((s) => s.setFrameloop);
+  useEffect(() => {
+    // Mounted with the cover already complete (a reload far down the page): start paused.
+    if (!isStageLive()) setFrameloop("never");
+    return onStageLive((live) => setFrameloop(live ? "always" : "never"));
+  }, [setFrameloop]);
+  return null;
+}
 
 /**
  * Keeps the scroll smooth by trading resolution first and look second.
@@ -122,6 +167,7 @@ export function Scene({
   parallaxRef,
   hotspotScreenRef,
   headlineIntroRef,
+  onReady,
 }: SceneProps) {
   const isMobile = useIsMobile();
   const tier = useTier();
@@ -150,7 +196,9 @@ export function Scene({
   // Start at a resolution the detected tier can plausibly hold. Fixed for the
   // session: AdaptiveQuality owns the render scale from here on, and a
   // changing `dpr` prop would fight it.
-  const [startDpr] = useState(() => Math.min(deviceDpr, tier === "high" ? 2 : tier === "medium" ? 1.25 : 0.75));
+  // The low tier starts at the screen's own resolution (it was 0.75 of it, a car stretched soft
+  // over the screen); AdaptiveQuality still lowers it if the frames cannot keep up.
+  const [startDpr] = useState(() => Math.min(deviceDpr, tier === "high" ? 2 : tier === "medium" ? 1.25 : 1));
 
   return (
     <Canvas
@@ -172,8 +220,11 @@ export function Scene({
       }}
     >
       <AdaptiveQuality maxDpr={deviceDpr} startDpr={startDpr} />
+      <FrameGate />
+      <DevProbe />
 
       <ambientLight intensity={0.15} />
+      <PlantFill />
 
       <World parallaxRef={parallaxRef} tier={tier} bareRenderer={isMobile} />
 
@@ -206,6 +257,7 @@ export function Scene({
         {/* Compile every material and upload every texture during the load
             screen, not on the first scroll. */}
         <Preload all />
+        <ReadySignal onReady={onReady} />
       </Suspense>
 
       <Lighting rimLightRef={rimLightRef} tier={tier} />

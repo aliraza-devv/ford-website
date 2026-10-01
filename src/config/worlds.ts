@@ -99,7 +99,7 @@ export const ENV_FORMERS: EnvFormer[] = [
     position: [-4, 4, 4],
     scale: [4, 2, 1],
     color: "#eef4ff",
-    intensity: [2.4, 1.2, 1.0],
+    intensity: [2.4, 1.2, 1.0, 0.9],
   },
   {
     // Faint cool rim. Was a full-strength Ford Grabber blue (intensity 5);
@@ -110,7 +110,7 @@ export const ENV_FORMERS: EnvFormer[] = [
     rotation: [0, Math.PI / 2, 0],
     scale: [6, 1.5, 1],
     color: "#7f93ff",
-    intensity: [0.5, 0.3, 0.2],
+    intensity: [0.5, 0.3, 0.2, 0.35],
   },
   // Thin tall strips either side and a long one overhead: these replace the
   // three RectAreaLights the car used to carry. Same job (the long specular
@@ -122,7 +122,7 @@ export const ENV_FORMERS: EnvFormer[] = [
     position: [3.2, 2.2, 2],
     scale: [0.3, 4, 1],
     color: "#eaf1ff",
-    intensity: [9, 5, 4],
+    intensity: [9, 5, 4, 3],
     faceCenter: true,
   },
   {
@@ -131,7 +131,7 @@ export const ENV_FORMERS: EnvFormer[] = [
     position: [-3, 1.6, 2.6],
     scale: [0.3, 3, 1],
     color: "#9db4ff",
-    intensity: [6, 3, 2],
+    intensity: [6, 3, 2, 2],
     faceCenter: true,
   },
   {
@@ -140,7 +140,7 @@ export const ENV_FORMERS: EnvFormer[] = [
     position: [0, 2.6, -3.5],
     scale: [4, 0.3, 1],
     color: "#eaf1ff",
-    intensity: [5, 3, 2],
+    intensity: [5, 3, 2, 1.5],
     faceCenter: true,
   },
   {
@@ -150,13 +150,54 @@ export const ENV_FORMERS: EnvFormer[] = [
     rotation: [-Math.PI / 2, 0, 0],
     scale: 8,
     color: "#dde4f0",
-    intensity: [1.2, 0.6, 1.4],
+    intensity: [1.2, 0.6, 1.4, 1.2],
+  },
+  // The plant's overhead fixture rows, as long strips running down the car's
+  // length (car-local Z is world X once the car is side-on). The two nearest
+  // rows (x = +-4.2 m) are what lay the long bright bands along the hood,
+  // roofline and flanks; the next pair (+-10 m) are fainter. The hall's rows
+  // hang 11.6 m up, which is 10.7 scene units.
+  {
+    id: "plant-row-a",
+    form: "rect",
+    position: [0, 10.7, 3.9],
+    rotation: [Math.PI / 2, 0, 0],
+    scale: [60, 0.5, 1],
+    color: "#dce6ff",
+    intensity: [0, 0, 0, 13],
+  },
+  {
+    id: "plant-row-b",
+    form: "rect",
+    position: [0, 10.7, -3.9],
+    rotation: [Math.PI / 2, 0, 0],
+    scale: [60, 0.5, 1],
+    color: "#dce6ff",
+    intensity: [0, 0, 0, 13],
+  },
+  {
+    id: "plant-row-c",
+    form: "rect",
+    position: [0, 10.7, 9.25],
+    rotation: [Math.PI / 2, 0, 0],
+    scale: [60, 0.5, 1],
+    color: "#dce6ff",
+    intensity: [0, 0, 0, 4],
+  },
+  {
+    id: "plant-row-d",
+    form: "rect",
+    position: [0, 10.7, -9.25],
+    rotation: [Math.PI / 2, 0, 0],
+    scale: [60, 0.5, 1],
+    color: "#dce6ff",
+    intensity: [0, 0, 0, 4],
   },
 ];
 
 // --------------------------------------------------------------- stages
 
-export type WorldId = "highway" | "tunnel" | "garage";
+export type WorldId = "highway" | "tunnel" | "garage" | "plant";
 
 export type WorldStage = {
   id: WorldId;
@@ -179,6 +220,10 @@ export const WORLD_STAGES: WorldStage[] = [
   // inside the cabin the highway behind the glass has dissolved into the dark
   // (and Highway stops drawing it altogether, see its useFrame).
   { id: "garage", fogDensity: 0.08, fogColor: "#000000", exposure: 1.05, bloom: 0.2, dof: 0, baseSpeed: 0 },
+  // The plant (Section 4): a long dark hall, fog the colour of its own air so
+  // the far end dissolves instead of ending, and enough bloom for the light
+  // rows to glow. Its own motion comes from the walkthrough, not from `speed`.
+  { id: "plant", fogDensity: 0.0055, fogColor: "#141a26", exposure: 1.1, bloom: 0.32, dof: 0, baseSpeed: 0 },
 ];
 
 /** Metres/second of extra flow per px/frame of Lenis scroll velocity. */
@@ -244,6 +289,12 @@ export function sampleWorld(world: number, out: SampledWorld = WORLD_RUNTIME): S
   return out;
 }
 
-// Prime the runtime object so the first Environment render (and anything
-// else that reads it before the first frame) sees Stage A's values, not zeros.
+/** What the environment cube is built from. Separate from WORLD_RUNTIME because
+ * the environment is refreshed on a policy of its own (see World.tsx), and so
+ * can be at a different point of the blend than the fog and exposure are. */
+export const ENV_RUNTIME: SampledWorld = makeSampled();
+
+// Prime the runtime objects so the first Environment render (and anything
+// else that reads them before the first frame) sees Stage A's values, not zeros.
 sampleWorld(0);
+sampleWorld(0, ENV_RUNTIME);

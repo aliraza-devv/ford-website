@@ -16,10 +16,9 @@ type HeroProps = {
  * Purely presentational DOM content for the hero stage -- the headline's
  * layout anchor, side panels, and chrome. Scene/world/refs/the load-in
  * timeline now live in HeroExperience.tsx, which owns the pinned stage this renders
- * into and the scroll transition into Section2. Only the headline and the
- * scroll cue carry `hero-fade-content` -- everything else (nav, stats,
- * paint selector, audio toggle) stays relevant and visible in section 2
- * too, so it isn't tied to the hero-specific fade.
+ * into and the scroll transition into Section2. The headline and the two
+ * side panels carry `hero-fade-content` and fade out as the car turns; the
+ * nav and audio toggle stay visible in section 2, so they aren't tied to it.
  */
 export function Hero({ loaded }: HeroProps) {
   const headlineRef = useFitText<HTMLHeadingElement>();
@@ -79,18 +78,6 @@ export function Hero({ loaded }: HeroProps) {
 
         <div className="flex items-end justify-between px-6 pb-8 sm:px-12">
           <AudioToggle />
-
-          <div className="hero-fade-content hero-scrollcue pointer-events-none flex flex-col items-center gap-3">
-            <div className="relative h-10 w-px bg-white/25">
-              <span
-                className="absolute left-1/2 top-0 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-ford-grabber"
-                style={{ animation: "scroll-cue-dot 2s ease-in-out infinite" }}
-              />
-            </div>
-            <span className="text-[11px] font-medium uppercase tracking-[0.2em] text-white/60">
-              {HERO_COPY.scrollIndicator}
-            </span>
-          </div>
 
           <div className="pointer-events-none text-right text-[11px] font-medium uppercase tracking-[0.2em] text-white/45">
             <div>{HERO_COPY.modelDesignation[0]}</div>

@@ -15,7 +15,10 @@ import { Loader } from "./Loader";
 import { Hero } from "./Hero";
 import { Section2 } from "./Section2";
 import { FeatureScan } from "./FeatureScan";
-import type { HotspotScreenMap } from "@/lib/hotspots";
+import { PlantOverlay } from "./PlantOverlay";
+import { FACTORY_VH } from "@/config/line";
+import { COVER_VH, HOLD_VH } from "@/config/sections";
+import { type HotspotScreenMap, hotspotScreen } from "@/lib/hotspots";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -33,7 +36,10 @@ const STAGE_23_VH = 1.1;
 // blade of light sweeps across it. About three scroll flicks, deliberately
 // short -- see FeatureScan.
 const FEATURES_VH = 1.2;
-const WRAPPER_VH = 1 + STAGE_12_VH + STAGE_23_VH + FEATURES_VH;
+// Section 4, the plant walkthrough (length and pace: FACTORY_VH in config/line).
+// After it the stage holds its last frame for HOLD_VH while the plant map rises over it
+// for COVER_VH (config/sections), so those screens belong to this wrapper.
+const WRAPPER_VH = 1 + STAGE_12_VH + STAGE_23_VH + FEATURES_VH + FACTORY_VH + HOLD_VH + COVER_VH;
 
 /**
  * Owns the pinned 3D stage shared by the hero and section 2, and the
@@ -58,13 +64,38 @@ export function HeroExperience() {
   const parallaxRef = useParallax();
   // Per-hotspot projected screen position -- written once per frame inside
   // the Canvas (MustangModel), read by FeatureScan's own rAF loop.
-  const hotspotScreenRef = useRef<HotspotScreenMap>({});
+  const hotspotScreenRef = useRef<HotspotScreenMap>(hotspotScreen);
   // The headline is drawn inside the canvas now (see HeadlinePlane); its
   // per-letter load-in is this one number, tweened below and read there.
   const headlineIntroRef = useRef<HeadlineIntro>({ p: 0 });
-  const [loaded, setLoaded] = useState(false);
+  // The page comes up in three steps, so that none of them waits for a heavier one.
+  //  1. The poster (a picture of the hero, public/hero) is there from the first paint, under the
+  //     loader, which is only the first second of the page and leaves on a fixed timeline.
+  //  2. The live scene (the 21 MB model, the shaders) arrives when it arrives, seconds later on a slow
+  //     machine or line, and fades in over the poster.
+  //  3. The hero's introduction (the car settling, the headline, the figures) plays when both
+  //     the loader has gone and the scene is there to play it on.
+  const [revealed, setRevealed] = useState(false);
+  const [sceneReady, setSceneReady] = useState(false);
+  const [posterGone, setPosterGone] = useState(false);
+  const loaded = revealed && sceneReady;
 
-  const handleLoaded = useCallback(() => setLoaded(true), []);
+  const handleRevealed = useCallback(() => setRevealed(true), []);
+  const handleSceneReady = useCallback(() => setSceneReady(true), []);
+
+  // If the scene never comes (a failed download), the page is shown without it after a while
+  // rather than held at the poster for good.
+  useEffect(() => {
+    const id = window.setTimeout(() => setSceneReady(true), 30000);
+    return () => window.clearTimeout(id);
+  }, []);
+
+  // Once the live scene has faded in over it, the poster has no more to do.
+  useEffect(() => {
+    if (!sceneReady) return;
+    const id = window.setTimeout(() => setPosterGone(true), 1200);
+    return () => window.clearTimeout(id);
+  }, [sceneReady]);
 
   // Lenis eases the scroll position itself, upstream of everything here --
   // see the hook for why that replaces the per-consumer smoothing this
@@ -103,14 +134,8 @@ export function HeroExperience() {
       // HeadlinePlane, per character, exactly as SplitText's stagger did.
       tl.to(headlineIntroRef.current, { p: 1, duration: HEADLINE_INTRO_SECONDS, ease: "none" }, 0.6);
 
-      // The cue's CHILDREN, not the cue: the scroll fade (below) owns the
-      // container's opacity, and two tweens on one element's opacity fight
-      // over which start value to restore when you scroll back to the top.
-      tl.from(".hero-navbar", { opacity: 0, y: -10, duration: 0.5 }, 1.6).from(
-        ".hero-scrollcue > *",
-        { opacity: 0, duration: 0.5 },
-        1.7,
-      );
+      // (The navbar is not part of the introduction: it is on the page from the first paint, with
+      // the poster, and an intro that hid it and faded it back in would make it blink.)
     },
     { scope: stageRef, dependencies: [loaded] },
   );
@@ -187,6 +212,19 @@ export function HeroExperience() {
         },
       });
 
+      ScrollTrigger.create({
+        trigger: wrapperRef.current,
+        start: () => `${window.innerHeight * (STAGE_12_VH + STAGE_23_VH + FEATURES_VH)}px top`,
+        end: () => `+=${window.innerHeight * FACTORY_VH}`,
+        invalidateOnRefresh: true,
+        onRefresh: (self) => {
+          scrollState.factory = self.progress;
+        },
+        onUpdate: (self) => {
+          scrollState.factory = self.progress;
+        },
+      });
+
       // The fades, positioned in units of viewport-heights of scroll so each
       // one lands on the same fraction of its stage as before: hero chrome
       // out by 0.08-0.43 of Stage 1->2, Section 2 in from 0.55, Section 2
@@ -251,18 +289,37 @@ export function HeroExperience() {
             in one persistent, opaque canvas that spans every scroll stage
             (see the module doc above). The headline is drawn inside it too
             (HeadlinePlane), which is how it stays behind the car. */}
-        <div className="absolute inset-0 z-20">
+        {/* The poster: the hero as the scene draws it, there from the first paint. The canvas is
+            opaque from the moment its context exists, so it is kept invisible until its first
+            frames are drawn, and then faded in over the poster, which is removed after. */}
+        {!posterGone && (
+          // eslint-disable-next-line @next/next/no-img-element -- a fixed, decorative picture that must paint in the first frame
+          <img
+            src="/hero/poster.webp"
+            alt=""
+            aria-hidden
+            fetchPriority="high"
+            decoding="async"
+            draggable={false}
+            className="pointer-events-none absolute inset-0 z-[10] h-full w-full select-none object-cover"
+          />
+        )}
+        <div
+          className="absolute inset-0 z-20"
+          style={{ opacity: sceneReady ? 1 : 0, transition: "opacity 900ms cubic-bezier(0.4, 0, 0.2, 1)" }}
+        >
           <Scene
             carGroupRef={carGroupRef}
             rimLightRef={rimLightRef}
             parallaxRef={parallaxRef}
             hotspotScreenRef={hotspotScreenRef}
             headlineIntroRef={headlineIntroRef}
+            onReady={handleSceneReady}
           />
         </div>
 
-        {/* Bottom scrim: keeps ENGINE SOUND, the scroll cue and the model
-            label off bright road. Above the canvas, below all UI. */}
+        {/* Bottom scrim: keeps ENGINE SOUND and the model label off bright
+            road. Above the canvas, below all UI. */}
         <div
           aria-hidden
           className="pointer-events-none absolute inset-x-0 bottom-0 z-[25] h-[16%]"
@@ -278,8 +335,9 @@ export function HeroExperience() {
         </div>
 
         <FeatureScan screenRef={hotspotScreenRef} />
+        <PlantOverlay screenRef={hotspotScreenRef} />
 
-        <Loader onComplete={handleLoaded} />
+        <Loader onComplete={handleRevealed} />
       </div>
     </div>
   );

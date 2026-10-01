@@ -5,6 +5,7 @@ import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import Lenis from "lenis";
 import { scrollState } from "@/lib/scrollState";
+import { setLenis } from "@/lib/lenisInstance";
 
 /**
  * Installs Lenis as the page's scroll smoother and hands its clock to GSAP.
@@ -48,6 +49,7 @@ export function useSmoothScroll() {
     });
 
     lenis.on("scroll", ScrollTrigger.update);
+    setLenis(lenis);
 
     // Dev-only handle: Lenis owns scroll position now, so `window.scrollTo`
     // is no longer a reliable way to drive the page from the console or an
@@ -72,6 +74,7 @@ export function useSmoothScroll() {
     return () => {
       gsap.ticker.remove(raf);
       gsap.ticker.lagSmoothing(500, 33); // restore GSAP's defaults
+      setLenis(null);
       lenis.destroy();
     };
   }, []);

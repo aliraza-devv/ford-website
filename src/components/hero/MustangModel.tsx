@@ -11,7 +11,10 @@ import * as THREE from "three";
 import gsap from "gsap";
 import { MODEL_URL, PAINT_SHADER, RIG, SECTION3, TARGET_CAR_LENGTH } from "@/lib/theme";
 import { HOTSPOTS, type HotspotScreenMap } from "@/lib/hotspots";
-import { getStage } from "@/lib/scrollState";
+import { smoothstep } from "@/config/line";
+import { carSource } from "@/lib/carSource";
+import { normalizeNodeName } from "@/lib/nodeNames";
+import { getStage, scrollState } from "@/lib/scrollState";
 import { useLiquidPaintMaterial } from "./LiquidPaintMaterial";
 import { InteriorLights } from "./InteriorLights";
 import { useTier } from "@/lib/perfTier";
@@ -34,22 +37,10 @@ useGLTF.preload(MODEL_URL);
 // That's why the cabin's accent trim takes the bodywork's colour and its
 // liquid-paint hover effect. Emergent, but correct: it's painted body-color
 // on the real car for the same reason.
-/**
- * three's GLTFLoader renames every node through
- * `PropertyBinding.sanitizeNodeName`, which STRIPS the characters
- * `. [ ] : /` outright (it doesn't substitute them). So this model's
- * "GT500.Door.L_carpaint_0" is only ever reachable as
- * "GT500DoorL_carpaint_0" once loaded, and `scene.getObjectByName` with the
- * name as it appears in the glb silently returns undefined.
- *
- * Everything below therefore matches on the NORMALIZED form, and the names
- * written out in this file stay as they appear in the actual asset -- which
- * is what you'd search for if you opened the glb in a viewer. Normalizing
- * both sides also means this keeps working if the loader's rules change.
- */
-function normalizeNodeName(name: string): string {
-  return name.replace(/[.[\]:/]/g, "");
-}
+// Node names are matched in their NORMALISED form (see lib/nodeNames.ts: three
+// strips `. [ ] : /` when it loads a glb), and the names written out in this
+// file stay as they appear in the asset, which is what you would search for in a
+// viewer. Normalising both sides keeps this working if the loader's rules change.
 
 const EXTERIOR_PANEL_PATTERN = /^GT500(Body|Door[LR]|Hood|Trunk|Bumper(Ft|Rr)|Fender[LR])_carpaint_0$/;
 const MAIN_BODY_NODE_NAME = normalizeNodeName("GT500.Body_carpaint_0");
@@ -275,6 +266,17 @@ export function MustangModel({ outerRef, hotspotScreenRef }: MustangModelProps) 
           mat.needsUpdate = true;
         }
 
+        // The exterior's gloss black (the grille, the lower lip, the mirror caps, the badges) was
+        // true black: no diffuse at all, and a mirror of a dark night, so the whole front fascia
+        // was a hole with no shape in it. A very dark grey, less mirror-like, reflects the lights
+        // and the sky enough to show the shape of each part.
+        if (mat.name === "glossblack") {
+          mat.color.set("#1b1e26");
+          mat.metalness = 0;
+          mat.roughness = 0.32;
+          mat.envMapIntensity = 1.5;
+        }
+
         if (mat.name.toLowerCase().includes("light")) {
           const isDark = mat.emissive.r < 0.05 && mat.emissive.g < 0.05 && mat.emissive.b < 0.05;
           if (isDark) mat.emissive.set("#fff2d9");
@@ -300,6 +302,19 @@ export function MustangModel({ outerRef, hotspotScreenRef }: MustangModelProps) 
       for (const clone of interiorClones.values()) clone.dispose();
     };
   }, [scene, offset, scale, headlightCenters, paintMaterial, tier]);
+
+  // Section 4 builds a second car on its assembly line. It clones this scene
+  // AFTER the effect above has finished re-materialling it, so it inherits the
+  // finished paint, glass and trim; this is the hand-off (see lib/carSource.ts).
+  useEffect(() => {
+    carSource.scene = scene;
+    carSource.scale = scale;
+    carSource.offset = offset;
+    carSource.ready = true;
+    return () => {
+      carSource.ready = false;
+    };
+  }, [scene, scale, offset]);
 
   // Resolve each callout's anchor node to a real mesh once, and warn
   // loudly about any that don't resolve -- a silently-missing anchor
@@ -356,7 +371,9 @@ export function MustangModel({ outerRef, hotspotScreenRef }: MustangModelProps) 
     }
 
     const stage3Progress = THREE.MathUtils.clamp(getStage() - 1, 0, 1);
-    stage3ProgressRef.current = stage3Progress;
+    // The cabin lights go out as the car leaves the interior for the plant.
+    const factory = scrollState.factory;
+    stage3ProgressRef.current = stage3Progress * (1 - smoothstep(0, 0.08, factory));
     const nowInSection3 = stage3Progress > 0;
 
     // Only project while Section 3 is actually on screen -- the overlay

@@ -27,8 +27,9 @@ export type Hotspot = {
   /** Node name in the glb. Must resolve to a Mesh -- see the module note. */
   node: string;
   nudge?: [number, number];
+  /** The whole callout: two or three words that explain themselves. There is
+   * deliberately no second line of copy. */
   title: string;
-  body: string;
   /** Which way the leader runs from the marker, and whether its label sits
    * above or below the horizontal rule. */
   side: "left" | "right";
@@ -44,7 +45,6 @@ export const HOTSPOTS: Hotspot[] = [
     // The paddles sit out to the left of the wheel's hub.
     nudge: [-0.205, -0.12],
     title: "Paddle shifters",
-    body: "Call the gears without leaving the wheel. The dual-clutch swaps in under 100 milliseconds.",
     side: "left",
     rise: "up",
   },
@@ -52,7 +52,6 @@ export const HOTSPOTS: Hotspot[] = [
     id: "digital-cluster",
     node: "GT500.Gauges_glossblack_0",
     title: "Digital cluster",
-    body: "Twelve inches that redraw themselves for every drive mode.",
     side: "right",
     rise: "up",
   },
@@ -60,7 +59,6 @@ export const HOTSPOTS: Hotspot[] = [
     id: "steering-wheel",
     node: "GT500.Steer_leather_0",
     title: "Flat-bottom wheel",
-    body: "Leather-wrapped and shaped for track hands.",
     side: "left",
     rise: "down",
   },
@@ -69,7 +67,6 @@ export const HOTSPOTS: Hotspot[] = [
     // The 2020-2022 GT500 runs SYNC 3 on an 8-inch screen.
     node: "GT500.Screen_glossblack_0",
     title: "SYNC 3 display",
-    body: "Eight inches, angled toward the driver.",
     side: "right",
     rise: "down",
   },
@@ -81,7 +78,6 @@ export const HOTSPOTS: Hotspot[] = [
     node: "GT500.Door.R_leather_0",
     nudge: [-0.992, -0.21],
     title: "Body-colour trim",
-    body: "The exterior paint carries through to the door cards.",
     side: "left",
     rise: "down",
   },
@@ -102,3 +98,8 @@ export type HotspotScreenState = {
   visible: boolean;
 };
 export type HotspotScreenMap = Record<string, HotspotScreenState>;
+
+/** The one shared map of projected callout positions. Sections 3 and 4 both
+ * write into it (the interior car, and the car on the plant line) and the
+ * overlays read from it. */
+export const hotspotScreen: HotspotScreenMap = {};
