@@ -16,10 +16,10 @@ export function Section2() {
     // has to live in the same upper band Hero's headline vacates instead
     // of overlapping that band, the way a vertically-centered block did.
     <div
-      // On wider screens the heading sits a little lower in its band (the padding, split by the
-      // centring, moves it down by half of 8vh) so it is not left far above the figures that
-      // start at the band's bottom edge.
-      className="pointer-events-none absolute inset-x-0 top-0 flex flex-col justify-center md:pt-[8vh]"
+      // On wider screens the heading is anchored to the bottom of its band, a fixed distance above
+      // the figures that start there (the band's bottom edge is where StatsPanel's box begins), so
+      // the gap between the two stays tight at any window height instead of widening with it.
+      className="pointer-events-none absolute inset-x-0 top-0 flex flex-col justify-center md:justify-end md:pb-[clamp(36px,5vh,64px)]"
       style={{
         left: `${LAYOUT.sideGutter * 100}%`,
         right: `${LAYOUT.sideGutter * 100}%`,
