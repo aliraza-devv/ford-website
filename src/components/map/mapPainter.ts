@@ -53,7 +53,13 @@ export class MapPainter {
   private dpr = 1;
 
   constructor(private canvas: HTMLCanvasElement) {
-    const ctx = canvas.getContext("2d", { alpha: false });
+    // Deliberately NOT `alpha: false`. paint() fills the whole canvas every frame, so the picture
+    // is the same either way, but an opaque canvas tells Chrome's compositor that it may skip
+    // drawing whatever is underneath it. The map rises over the 3D stage and the compositor's idea
+    // of where the canvas sits lags behind the scroll, so with an opaque canvas it skipped the
+    // plant scene in a band at the top of the screen (black panels and flicker at the end of the
+    // plant film). A canvas that is not declared opaque is simply drawn over the scene.
+    const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("2D canvas unavailable");
     this.ctx = ctx;
     this.paths = MAP_STATES.map((s) => new Path2D(s.d));
