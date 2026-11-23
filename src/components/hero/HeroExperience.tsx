@@ -217,11 +217,13 @@ export function HeroExperience() {
         start: () => `${window.innerHeight * (STAGE_12_VH + STAGE_23_VH + FEATURES_VH)}px top`,
         end: () => `+=${window.innerHeight * FACTORY_VH}`,
         invalidateOnRefresh: true,
+        // A refresh (load, resize) places the film where the scroll is, without gliding there.
         onRefresh: (self) => {
+          scrollState.factoryTarget = self.progress;
           scrollState.factory = self.progress;
         },
         onUpdate: (self) => {
-          scrollState.factory = self.progress;
+          scrollState.factoryTarget = self.progress;
         },
       });
 

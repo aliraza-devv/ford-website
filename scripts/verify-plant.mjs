@@ -42,9 +42,9 @@ const OUT = path.resolve("reference/compare");
 fs.mkdirSync(OUT, { recursive: true });
 
 // Stage 1->2 (1.2) + 2->3 (1.1) + features (1.2) come first; then the walkthrough
-// (FACTORY_VH in src/config/line.ts, 5.5 screens; override with --vh=).
+// (FACTORY_VH in src/config/line.ts, 7.5 screens; override with --vh=).
 // A negative frame means "the very top of the page" (the hero).
-const FACTORY_VH = Number(args.vh ?? 5.5);
+const FACTORY_VH = Number(args.vh ?? 7.5);
 const scrollForFrame = (f) => (f < 0 ? 0 : (1.2 + 1.1 + 1.2 + f * FACTORY_VH) * H);
 
 const query = args.query ? `?${args.query}` : TIER === "auto" ? "" : `?tier=${TIER}`;

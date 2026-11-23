@@ -44,6 +44,10 @@ export function PostFX({ tier, carGroupRef }: PostFXProps) {
   const bloom = useRef<BloomEffect>(null);
   const dof = useRef<DepthOfFieldEffect>(null);
   const camera = useThree((s) => s.camera);
+  // Whether the depth of field is doing anything this frame (see below).
+  const dofOn = useRef(true);
+  const dofPatched = useRef(false);
+  const dofBlend = useRef<BlendFunction>(BlendFunction.NORMAL);
 
   useFrame(() => {
     if (exposure.current) exposure.current.exposure = WORLD_RUNTIME.exposure;
@@ -51,6 +55,24 @@ export function PostFX({ tier, carGroupRef }: PostFXProps) {
 
     const effect = dof.current;
     if (effect) {
+      // The depth of field is strongest on the highway and zero from the side profile on (see
+      // `dof` in config/worlds), but the effect renders seven passes every frame whatever its
+      // strength: cutting it off is worth a lot from Section 2 to the end of the plant. It
+      // is switched off in the final shader (once, when it crosses ~0) and its own passes are
+      // skipped, so there is nothing stale to show when it comes back.
+      if (!dofPatched.current) {
+        dofPatched.current = true;
+        dofBlend.current = effect.blendMode.blendFunction;
+        const update = effect.update.bind(effect);
+        effect.update = (renderer, inputBuffer, deltaTime) => {
+          if (dofOn.current) update(renderer, inputBuffer, deltaTime);
+        };
+      }
+      const wanted = WORLD_RUNTIME.dof > (dofOn.current ? 0.004 : 0.02);
+      if (wanted !== dofOn.current) {
+        dofOn.current = wanted;
+        effect.blendMode.blendFunction = wanted ? dofBlend.current : BlendFunction.SKIP;
+      }
       // Focus on the car. Everything from the front splitter to the
       // headline stay sharp (blur ramps linearly with distance from the focus
       // plane over `worldFocusRange`, so it has to be wide); the lamps 30 m
@@ -81,5 +103,8 @@ export function PostFX({ tier, carGroupRef }: PostFXProps) {
   // lamps) came out stair-stepped. SMAA is about half a millisecond a frame and mends them.
   if (tier === "low") effects.push(<SMAA key="smaa" />);
 
-  return <EffectComposer multisampling={tier === "high" ? 4 : tier === "medium" ? 2 : 0}>{effects}</EffectComposer>;
+  // Multisampling is the one setting here that costs by the pixel through every pass of the
+  // chain: 4 samples of a half-float target at screen size is a lot of memory traffic. The high
+  // tier uses 2 (the picture is graded and grained and its edges are fine); medium 2 as before.
+  return <EffectComposer multisampling={tier === "low" ? 0 : 2}>{effects}</EffectComposer>;
 }

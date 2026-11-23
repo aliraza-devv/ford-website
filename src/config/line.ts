@@ -501,6 +501,17 @@ export const STATION_NAMES = ["Engine", "Body", "Doors", "Hood and trunk", "Bump
  * three screens, which played every station in about three wheel clicks; four
  * and a half gave each hold (a crane carrying a part across the hall and
  * setting it down) the time to be watched; five and a half is that plus room for the
- * cars' own moves (see STEP). The one number that sets the pace of the whole film:
- * every window in it is a fraction of this length. */
-export const FACTORY_VH = 5.5;
+ * cars' own moves (see STEP). It still read as fast: the fly over the line and the
+ * camera's swing round to the first station cover about seventy metres in under half a
+ * screen, and a single hard flick of a trackpad is two or three screens. Seven and a half
+ * slows all of it by a third, and the film now follows the scroll with inertia and a top
+ * speed (see FACTORY_FOLLOW), which is what keeps a flick from skipping a station.
+ * The one number that sets the pace of the whole film: every window in it is a fraction
+ * of this length. */
+export const FACTORY_VH = 7.5;
+
+/** How the film follows the scroll position. `smoothTime` is the time (s) it takes to settle
+ * onto a new position; `maxSpeed` is the most of the whole film (0-1) it will play in a
+ * second, so even a jump to the end of the page plays the plant through in a couple of
+ * seconds instead of cutting across it. */
+export const FACTORY_FOLLOW = { smoothTime: 0.4, maxSpeed: 0.45 };

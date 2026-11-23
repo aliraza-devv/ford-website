@@ -14,6 +14,7 @@ import { HOTSPOTS, type HotspotScreenMap } from "@/lib/hotspots";
 import { smoothstep } from "@/config/line";
 import { carSource } from "@/lib/carSource";
 import { normalizeNodeName } from "@/lib/nodeNames";
+import { hiddenInReflection } from "@/lib/reflectorBudget";
 import { getStage, scrollState } from "@/lib/scrollState";
 import { useLiquidPaintMaterial } from "./LiquidPaintMaterial";
 import { InteriorLights } from "./InteriorLights";
@@ -245,6 +246,8 @@ export function MustangModel({ outerRef, hotspotScreenRef }: MustangModelProps) 
           if (tier === "high") {
             mat.transmission = mat.transmission || 1;
             mat.thickness = mat.thickness || 0.05;
+            // The floor's reflection does not need the windows (see lib/reflectorBudget).
+            hiddenInReflection.add(mat);
           } else {
             // Real transmission re-renders the whole scene behind the glass
             // into a second target every frame (~75 ms inside the cabin on

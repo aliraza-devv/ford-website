@@ -31,6 +31,10 @@ export type ScrollState = {
    * hall position, camera, part offsets, paint sweep, overlay copy -- is a
    * pure function of this one number, so scrolling back reverses it exactly. */
   factory: number;
+  /** Where the page's scroll says the walkthrough should be (0-1). `factory` follows it with a
+   * little inertia and a top speed (see useSmoothScroll), so a hard flick can neither snap the
+   * camera across the hall nor play the whole line in a blink. */
+  factoryTarget: number;
   /** 0-1 as the plant map rises over the plant (Section 5's cover), then 0-1 across
    * the tour of Ford's plants itself once it is pinned. Neither touches the 3D
    * world; they are read by the map's own loop. */
@@ -59,6 +63,7 @@ export const scrollState: ScrollState = {
   stage23: 0,
   features: 0,
   factory: 0,
+  factoryTarget: 0,
   cover5: 0,
   map: 0,
   cover6: 0,

@@ -5,6 +5,7 @@ import * as THREE from "three";
 import { Reflector } from "three/examples/jsm/objects/Reflector.js";
 import { GATE_Z, HALL, PITCH, STATION_COUNT, TUNNEL_Z, stationZ } from "@/config/line";
 import type { Tier } from "@/lib/perfTier";
+import { budgetReflector } from "@/lib/reflectorBudget";
 import { ROAD_VERTEX, roadShared } from "../roadShader";
 import { HALL_LIGHT_GLSL, hallLight } from "./hallLight";
 
@@ -252,7 +253,10 @@ export function PlantFloor({ tier }: { tier: Tier }) {
       return mesh;
     }
 
-    const [textureWidth, textureHeight] = tier === "high" ? [1024, 576] : [512, 288];
+    // The reflection is read through the floor's roughness (a blur of up to three mip levels), so
+    // it does not need more than this to look the same; and it is drawn every other frame (see
+    // lib/reflectorBudget).
+    const [textureWidth, textureHeight] = tier === "high" ? [768, 432] : [512, 288];
     const reflector = new Reflector(geometry, {
       textureWidth,
       textureHeight,
@@ -273,6 +277,7 @@ export function PlantFloor({ tier }: { tier: Tier }) {
     Object.assign((reflector.material as THREE.ShaderMaterial).uniforms, shared);
     reflector.rotation.x = -Math.PI / 2;
     reflector.position.set(0, 0, FLOOR_CENTER_Z);
+    budgetReflector(reflector, { every: 2 });
     return reflector;
   }, [tier]);
 

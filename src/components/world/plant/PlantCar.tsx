@@ -38,6 +38,11 @@ type Anchor = { id: string; mesh: THREE.Mesh; localCenter: THREE.Vector3 };
 type Built = {
   outer: THREE.Group;
   parts: RigPart[];
+  /** `parts`, grouped by actor: the frame loop used to filter the whole list once per actor. */
+  byActor: RigPart[][];
+  /** Where each actor's parts were last put (x, y, z), so a part that has not moved is not
+   * written, which would otherwise rebuild its matrix and its parents' every frame. */
+  lastOffset: Float64Array;
   anchors: Anchor[];
   /** glb units per hall metre. */
   unitsPerMetre: number;
@@ -89,9 +94,15 @@ function build(): Built {
     anchors.push({ id: c.id, mesh, localCenter });
   }
 
+  const byActor: RigPart[][] = ACTORS.map(() => []);
+  for (const p of parts) byActor[p.actor].push(p);
+  const lastOffset = new Float64Array(ACTORS.length * 3).fill(Number.NaN);
+
   return {
     outer,
     parts,
+    byActor,
+    lastOffset,
     anchors,
     unitsPerMetre: METER / scale,
     visible: ACTORS.map(() => true),
@@ -149,8 +160,15 @@ export function PlantCar() {
       const dx = pose.center[0] - a.center[0];
       const dy = pose.center[1] - a.center[1];
       const dz = pose.center[2] - (z + a.center[2]);
-      for (const p of b.parts) {
-        if (p.actor !== i) continue;
+      // Parked (waiting on its cart, or installed and riding with the car) the offset does not
+      // change from frame to frame: skip the writes.
+      const last = b.lastOffset;
+      const k = i * 3;
+      if (Math.abs(last[k] - dx) < 1e-6 && Math.abs(last[k + 1] - dy) < 1e-6 && Math.abs(last[k + 2] - dz) < 1e-6) return;
+      last[k] = dx;
+      last[k + 1] = dy;
+      last[k + 2] = dz;
+      for (const p of b.byActor[i]) {
         offsetScratch.set(dx, dy, dz).multiplyScalar(b.unitsPerMetre).applyMatrix3(p.toLocal);
         p.object.position.copy(p.base).add(offsetScratch);
       }

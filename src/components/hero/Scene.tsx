@@ -1,10 +1,15 @@
 "use client";
 
+/* eslint-disable react-hooks/immutability --
+ * ReflectorClock ticks a module counter and sets a renderer property from useFrame, outside
+ * React's render/commit cycle. */
+
 import { type RefObject, Suspense, useEffect, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { ContactShadows, Preload, PerspectiveCamera } from "@react-three/drei";
 import * as THREE from "three";
 import dynamic from "next/dynamic";
+import gsap from "gsap";
 import type { ParallaxState } from "@/hooks/useParallax";
 import { FORD_COLORS, RIG } from "@/lib/theme";
 import type { HotspotScreenMap } from "@/lib/hotspots";
@@ -12,6 +17,7 @@ import { capTier, getTier, pinTier, stepDownTier, type Tier, useTier } from "@/l
 import { scrollState } from "@/lib/scrollState";
 import { worldDebug } from "@/lib/worldDebug";
 import { isStageLive, onStageLive } from "@/lib/stageLive";
+import { reflectorClock } from "@/lib/reflectorBudget";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { Lighting } from "./Lighting";
 import { PlantFill } from "@/components/world/plant/PlantFill";
@@ -54,6 +60,18 @@ const FAST_MS = 13.5;
 /** Settling time after mount: model download, shader compiles and the intro
  * animation are not sustained slowness. */
 const GRACE_MS = 2500;
+/** After a resolution change the render targets are reallocated and the next frames are slow for
+ * that reason alone: they are not measured. */
+const SETTLE_MS = 1500;
+/**
+ * The render scales the controller moves between. Every change reallocates the canvas and every
+ * post-processing target, which is a visible hitch, so it moves in a few big steps rather than
+ * many small ones, and each step is a scale that looks like a choice (1.5x, 1x), not a number.
+ */
+const DPR_STEPS = [2, 1.5, 1.25, 1, 0.8, 0.65, MIN_DPR];
+/** Scroll speed (px a frame) above which resolution is not handed back: sharpening in the
+ * middle of a scroll is a hitch exactly when the eye is following motion. */
+const SCROLLING = 0.6;
 
 /** Development only: hands the renderer, scene and camera to the console and the
  * verification scripts (window.__fordGl), so a frame can be taken apart. */
@@ -81,18 +99,119 @@ function ReadySignal({ onReady }: { onReady?: () => void }) {
   return null;
 }
 
+/** Screens that refresh faster than this get the frame cap; slower ones (60, 75, 90, 100 Hz)
+ * are left alone. */
+const CAP_ABOVE_HZ = 105;
+/** The cap draws every n-th screen refresh, n the smallest whole number that brings the rate to
+ * about this or below: 120 Hz draws 60, 144 Hz draws 72, 165 Hz draws 82, 240 Hz draws 80. A
+ * whole divisor is what keeps the gap between frames even; "about 60" on a 144 Hz screen
+ * alternates 14 and 21 ms and judders worse than either. The measured rate runs a few percent
+ * above the screen's (the quick end of the gaps), which CAP_SLACK allows for. */
+const CAP_TARGET_HZ = 85;
+const CAP_SLACK = 0.1;
+
 /**
- * Stops the render loop while the plant map covers this stage completely (see
- * lib/stageLive). Nothing the canvas drew would be seen, and its frames would be paid
- * for with the time the map and the road finder need to scroll smoothly.
+ * Pauses the render loop while the plant map covers this stage completely (see lib/stageLive),
+ * and holds it to 60 frames a second on screens that refresh faster than that.
+ *
+ * 1. Nothing the canvas drew while the map covers it would be seen, and its frames would be
+ *    paid for with the time the map and the road finder need to scroll smoothly.
+ * 2. On a 120 or 144 Hz screen the default loop asks for a frame every 7-8 ms. A scene this
+ *    heavy cannot keep that up, and a loop that manages 90 one moment and 70 the next is the
+ *    judder people call lag. A steady 60-72 looks smoother than a wavering 100, and the GPU gets
+ *    half the work. The screen's rate is measured from the first two seconds of ticks (a
+ *    loaded page can only tick slower than its screen, never faster, so the quick end of the
+ *    gaps is the screen's own rate). A 60 Hz screen keeps the plain loop untouched: no frame is
+ *    ever held back there, and no frame of latency is added.
+ *
+ * In capped mode the loop is "demand": a frame is requested from the same clock as Lenis and
+ * GSAP (gsap.ticker), so it is drawn on the next screen refresh with the scroll already moved.
  */
-function FrameGate() {
+function FrameDriver() {
+  const invalidate = useThree((s) => s.invalidate);
   const setFrameloop = useThree((s) => s.setFrameloop);
+
   useEffect(() => {
-    // Mounted with the cover already complete (a reload far down the page): start paused.
-    if (!isStageLive()) setFrameloop("never");
-    return onStageLive((live) => setFrameloop(live ? "always" : "never"));
-  }, [setFrameloop]);
+    let live = isStageLive();
+    let mode: "always" | "demand" | "never" = live ? "always" : "never";
+    let measured = false;
+    const gaps: number[] = [];
+    let prev = -1;
+    let last = -1;
+    // Screen refreshes per drawn frame (1 = no cap), and the screen's refresh interval.
+    let every = 1;
+    let tickS = 1 / 60;
+
+    const apply = (next: typeof mode) => {
+      if (next === mode) return;
+      mode = next;
+      setFrameloop(next);
+    };
+    const wanted = () => (!live ? "never" : every > 1 ? "demand" : "always");
+
+    const tick = (time: number) => {
+      if (!measured && prev >= 0 && live) {
+        gaps.push(time - prev);
+        if (gaps.length >= 120) {
+          measured = true;
+          gaps.sort((a, b) => a - b);
+          tickS = gaps[Math.floor(gaps.length * 0.1)];
+          const hz = 1 / tickS;
+          every = hz > CAP_ABOVE_HZ ? Math.ceil(hz / CAP_TARGET_HZ - CAP_SLACK) : 1;
+          apply(wanted());
+        }
+      }
+      prev = time;
+      if (mode !== "demand") return;
+      // Draw on every n-th refresh: once n refreshes' worth of time has passed, less half a
+      // refresh so that the nearest one to it is the one that draws.
+      if (last >= 0 && time - last < (every - 0.5) * tickS) return;
+      last = time;
+      invalidate();
+    };
+
+    // Development only: `?frameEvery=3` draws every 3rd tick whatever the screen, so the capped loop
+    // can be checked on a 60 Hz (or software-rendered) machine.
+    if (process.env.NODE_ENV !== "production") {
+      const forced = Number(new URLSearchParams(window.location.search).get("frameEvery"));
+      if (forced >= 2) {
+        measured = true;
+        every = forced;
+        tickS = 1 / 60;
+        mode = wanted();
+      }
+    }
+
+    setFrameloop(mode);
+    gsap.ticker.add(tick);
+    const off = onStageLive((next) => {
+      live = next;
+      last = -1;
+      apply(wanted());
+    });
+    return () => {
+      gsap.ticker.remove(tick);
+      off();
+    };
+  }, [invalidate, setFrameloop]);
+
+  return null;
+}
+
+/**
+ * Ticks once a frame, before anything renders (priority below zero), and keeps the
+ * glass transmission pass cheap in the plant. See lib/reflectorBudget for the clock.
+ */
+function ReflectorClock() {
+  const gl = useThree((s) => s.gl);
+  useFrame(() => {
+    reflectorClock.frame++;
+    // Real transmission (the high tier's glass) draws every opaque object again into a
+    // target as large as the screen. Behind a car window in the plant half that size reads
+    // the same, and its fill cost is a quarter.
+    const scale = scrollState.factory > 0 ? 0.5 : 1;
+    if (gl.transmissionResolutionScale !== scale) gl.transmissionResolutionScale = scale;
+  }, -1000);
   return null;
 }
 
@@ -106,13 +225,24 @@ function FrameGate() {
  */
 function AdaptiveQuality({ maxDpr, startDpr }: { maxDpr: number; startDpr: number }) {
   const setDpr = useThree((s) => s.setDpr);
-  const s = useRef({ acc: 0, n: 0, dpr: startDpr, slowStreak: 0, fastStreak: 0, elapsed: 0 });
+  const s = useRef({ acc: 0, n: 0, dpr: startDpr, slowStreak: 0, fastStreak: 0, elapsed: 0, settle: 0 });
+
+  /** The rungs of the ladder below a scale (largest first), and above it up to where the page
+   * started: it is never handed more than it began with, so a scene that had to give resolution
+   * back does not keep trading it up and down. `maxDpr` is what the screen could show at most. */
+  const ceiling = Math.min(maxDpr, startDpr);
+  const stepsBelow = (dpr: number) => DPR_STEPS.filter((d) => d < dpr - 0.01);
+  const stepsAbove = (dpr: number) => DPR_STEPS.filter((d) => d <= ceiling + 0.01 && d > dpr + 0.01);
 
   useFrame((_, dt) => {
     if (dt > 0.25 || document.hidden) return;
     const q = s.current;
-    q.acc += dt;
     q.elapsed += dt;
+    if (q.settle > 0) {
+      q.settle -= dt;
+      return;
+    }
+    q.acc += dt;
     q.n++;
     if (q.acc < 0.75) return;
 
@@ -128,22 +258,32 @@ function AdaptiveQuality({ maxDpr, startDpr }: { maxDpr: number; startDpr: numbe
         q.slowStreak = 0;
         if (q.dpr > MIN_DPR + 0.01) {
           // Fill cost scales with pixel count, i.e. with dpr squared, so the
-          // scale that would land on TARGET_MS is sqrt(target / actual).
-          const scale = Math.min(0.95, Math.max(0.6, Math.sqrt(TARGET_MS / avgMs)));
-          q.dpr = Math.max(MIN_DPR, q.dpr * scale);
+          // scale that would land on TARGET_MS is sqrt(target / actual). Take the
+          // first rung of the ladder at or below that.
+          const want = q.dpr * Math.min(0.95, Math.max(0.55, Math.sqrt(TARGET_MS / avgMs)));
+          const below = stepsBelow(q.dpr);
+          const next = below.find((d) => d <= want + 0.01) ?? below[below.length - 1] ?? MIN_DPR;
+          q.dpr = Math.max(MIN_DPR, next);
+          q.settle = SETTLE_MS / 1000;
           setDpr(q.dpr);
         } else {
           // Resolution is at its floor: drop a tier. The controller hands
           // resolution back on its own once the lighter tier proves fast.
           stepDownTier();
+          q.settle = SETTLE_MS / 1000;
         }
       }
     } else if (avgMs < FAST_MS) {
       q.slowStreak = 0;
-      if (++q.fastStreak >= 4 && q.dpr < maxDpr - 0.01) {
+      // Only while the page is still: a sharper picture can wait for the next pause.
+      if (Math.abs(scrollState.velocity) < SCROLLING && ++q.fastStreak >= 5) {
         q.fastStreak = 0;
-        q.dpr = Math.min(maxDpr, q.dpr * 1.08);
-        setDpr(q.dpr);
+        const above = stepsAbove(q.dpr);
+        if (above.length) {
+          q.dpr = above[above.length - 1]; // the nearest rung up
+          setDpr(q.dpr);
+          q.settle = SETTLE_MS / 1000;
+        }
       }
     } else {
       q.slowStreak = 0;
@@ -198,10 +338,14 @@ export function Scene({
   // changing `dpr` prop would fight it.
   // The low tier starts at the screen's own resolution (it was 0.75 of it, a car stretched soft
   // over the screen); AdaptiveQuality still lowers it if the frames cannot keep up.
-  const [startDpr] = useState(() => Math.min(deviceDpr, tier === "high" ? 2 : tier === "medium" ? 1.25 : 1));
+  // The high tier no longer starts at 2: on a retina screen that is four times the pixels of 1,
+  // through a 4x-multisampled, bloomed, tone-mapped chain, and a car and a reflection in it. 1.5
+  // reads as sharp here (the picture is graded, grained and bloomed) and costs about half.
+  const [startDpr] = useState(() => Math.min(deviceDpr, tier === "high" ? 1.5 : tier === "medium" ? 1.25 : 1));
 
   return (
     <Canvas
+      // FrameDriver pauses it while the map covers the stage and caps it at 60 on fast screens.
       dpr={startDpr}
       // Named explicitly: bare `shadows` asks for PCFSoftShadowMap, which
       // three removed in r186 and silently downgrades to PCFShadowMap with
@@ -220,7 +364,8 @@ export function Scene({
       }}
     >
       <AdaptiveQuality maxDpr={deviceDpr} startDpr={startDpr} />
-      <FrameGate />
+      <FrameDriver />
+      <ReflectorClock />
       <DevProbe />
 
       <ambientLight intensity={0.15} />

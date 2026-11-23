@@ -117,6 +117,17 @@ export function PlantOverlay({ screenRef }: PlantOverlayProps) {
     };
     void document.fonts?.ready.then(() => measure());
 
+    // The overlay's size, kept up to date by an observer. It used to be read from the element
+    // (clientWidth/clientHeight) inside the frame loop, after the loop had written opacities and
+    // transforms: reading layout after writing styles makes the browser recalculate style and
+    // layout on the spot, once a frame, for as long as the walkthrough is on screen.
+    const size = { w: rootRef.current?.clientWidth ?? 0, h: rootRef.current?.clientHeight ?? 0 };
+    const sizeObserver = new ResizeObserver(([entry]) => {
+      size.w = entry.contentRect.width;
+      size.h = entry.contentRect.height;
+    });
+    if (rootRef.current) sizeObserver.observe(rootRef.current);
+
     // The parts of each block, collected once.
     const parts: Partial<Record<BeatId, { el: HTMLElement; kind: string }[]>> = {};
     for (const b of BEATS) {
@@ -244,8 +255,8 @@ export function PlantOverlay({ screenRef }: PlantOverlayProps) {
       }
 
       // ---- callouts on the engine and gearbox (desktop)
-      const W = root.clientWidth;
-      const H = root.clientHeight;
+      const W = size.w;
+      const H = size.h;
       const s = Math.min(Math.max(H / 1080, 0.7), 1.25);
       const callAlpha = smoothstep(0.222, 0.24, f) * (1 - smoothstep(0.262, 0.28, f));
       if (W !== measuredFor) {
@@ -290,7 +301,10 @@ export function PlantOverlay({ screenRef }: PlantOverlayProps) {
     };
 
     raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      cancelAnimationFrame(raf);
+      sizeObserver.disconnect();
+    };
   }, [isMobile, screenRef]);
 
   // One stable ref callback per block and per wash.
@@ -323,14 +337,14 @@ export function PlantOverlay({ screenRef }: PlantOverlayProps) {
       </p>
 
       {/* ------------------------------------------------ the legibility washes */}
-      <div ref={wash("place")} aria-hidden className="absolute bottom-0 left-0 hidden h-[80%] w-[74%] opacity-0 md:block" style={{ background: WASH.corner }} />
-      <div ref={wash("engine")} aria-hidden className="absolute right-0 top-0 hidden h-[72%] w-[62%] opacity-0 md:block" style={{ background: WASH.cornerTop }} />
-      <div ref={wash("plant")} aria-hidden className="absolute inset-y-0 left-0 hidden w-[58%] opacity-0 md:block" style={{ background: WASH.edge }} />
+      <div ref={wash("place")} aria-hidden className="absolute bottom-0 left-0 hidden h-[80%] w-[74%] opacity-0 will-change-[opacity] md:block" style={{ background: WASH.corner }} />
+      <div ref={wash("engine")} aria-hidden className="absolute right-0 top-0 hidden h-[72%] w-[62%] opacity-0 will-change-[opacity] md:block" style={{ background: WASH.cornerTop }} />
+      <div ref={wash("plant")} aria-hidden className="absolute inset-y-0 left-0 hidden w-[58%] opacity-0 will-change-[opacity] md:block" style={{ background: WASH.edge }} />
 
       {/* ------------------------------------------------------ two plants */}
       <div
         ref={block("place")}
-        className="invisible absolute inset-x-6 bottom-[16%] opacity-0 md:inset-x-auto md:bottom-[11%] md:left-[var(--gutter)] md:w-[min(46vw,760px)]"
+        className="invisible absolute inset-x-6 bottom-[16%] opacity-0 will-change-[opacity,transform] md:inset-x-auto md:bottom-[11%] md:left-[var(--gutter)] md:w-[min(46vw,760px)]"
       >
         <div className="flex flex-col gap-5 md:gap-6">
           <h2 className={`${HEADING} text-[clamp(52px,6.9vw,128px)]`}>
@@ -346,7 +360,7 @@ export function PlantOverlay({ screenRef }: PlantOverlayProps) {
       {/* ----------------------------------------------------- the engine */}
       <div
         ref={block("engine")}
-        className="invisible absolute inset-x-6 bottom-[16%] opacity-0 md:inset-x-auto md:bottom-auto md:right-[var(--gutter)] md:top-[19%] md:w-[min(34vw,560px)]"
+        className="invisible absolute inset-x-6 bottom-[16%] opacity-0 will-change-[opacity,transform] md:inset-x-auto md:bottom-auto md:right-[var(--gutter)] md:top-[19%] md:w-[min(34vw,560px)]"
       >
         <div className="flex flex-col gap-5 md:items-end md:gap-6 md:text-right">
           <h3 className={`${HEADING} text-[clamp(40px,4.7vw,88px)]`}>
@@ -362,7 +376,7 @@ export function PlantOverlay({ screenRef }: PlantOverlayProps) {
       {/* ------------------------------------------------------ flat rock */}
       <div
         ref={block("plant")}
-        className="invisible absolute inset-x-6 bottom-[16%] opacity-0 md:inset-x-auto md:bottom-auto md:left-[var(--gutter)] md:top-[26%] md:w-[min(30vw,500px)]"
+        className="invisible absolute inset-x-6 bottom-[16%] opacity-0 will-change-[opacity,transform] md:inset-x-auto md:bottom-auto md:left-[var(--gutter)] md:top-[26%] md:w-[min(30vw,500px)]"
       >
         <div className="flex flex-col gap-5 md:gap-6">
           <h3 className={`${HEADING} text-[clamp(40px,4.7vw,88px)]`}>

@@ -4,6 +4,7 @@ import { useEffect, useMemo } from "react";
 import * as THREE from "three";
 import { Reflector } from "three/examples/jsm/objects/Reflector.js";
 import type { Tier } from "@/lib/perfTier";
+import { budgetReflector } from "@/lib/reflectorBudget";
 import { ROAD_VERTEX, roadFragment, roadShared } from "./roadShader";
 
 export const GROUND_SIZE = 700;
@@ -63,6 +64,8 @@ export function Ground({ tier }: { tier: Tier }) {
     Object.assign((reflector.material as THREE.ShaderMaterial).uniforms, roadShared);
     reflector.rotation.x = -Math.PI / 2;
     reflector.position.set(0, 0, GROUND_CENTER_Z);
+    // Every frame (the lamps and the car move fast past this one), but only once a frame.
+    budgetReflector(reflector);
     return reflector;
   }, [tier]);
 
